@@ -21,8 +21,10 @@
 
   ##### 小标题：xxx      （可选）文章内的小节标题，加粗左对齐
 
-  图片：C:\\图\\a.jpg   （可选）插图，插在正文当前位置
-  图片名：这是图片名称  （可选）图注，紧跟图片下方、居中加粗
+  图片：C:\\图\\a.jpg   （可选）插图，插在正文当前位置（自定义写法）
+  图片名：这是图片名称  （可选）图注，紧跟图片下方、居中
+  也支持标准 Markdown 写法：![图注](图/a.jpg)   （Pandoc 等工具从 Word 转出的图）
+  图片路径写相对路径时，会按「本 .md 文件所在目录」去找（换电脑不用改路径）
 -----------------------------------------------------------
 """
 import io, os, re, sys, math, html
@@ -459,6 +461,7 @@ NOTES = ["（这中间是不是接得有点突兀）",
 END_PUNCT = "。！？!?；;：:…，,、～~”」』）)"
 IMG_RE = re.compile(r"^图片\s*[:：]\s*(.+)$")
 CAP_RE = re.compile(r"^图片名\s*[:：]\s*(.+)$")
+MD_IMG_RE = re.compile(r"^!\s*\[([^\]]*)\]\s*\(([^)]+)\)")   # ![图注](路径) 标准 Markdown 图片
 SUB_RE = re.compile(r"^#####\s*(?:小标题\s*[:：]?\s*)?(.+)$")
 
 
@@ -469,7 +472,14 @@ def clean_line(s):
     return s.strip()   # 保留 **，供正文「加粗+主题色」拆分使用
 
 
-def classify(lines):
+def _resolve_img(path, base_dir):
+    """相对路径的图片按 .md 文件所在目录解析成绝对路径；绝对路径原样返回。"""
+    if not path or base_dir is None or os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(base_dir, path))
+
+
+def classify(lines, base_dir=None):
     """把一篇文章的正文行分类成 items 列表：
     ('p', text) 正文段  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图"""
     ls = [clean_line(s) for s in lines]
@@ -486,13 +496,20 @@ def classify(lines):
             continue
         im = IMG_RE.match(s)
         if im:
-            path = im.group(1).strip()
+            path = _resolve_img(im.group(1).strip(), base_dir)
             caption = None
             if k + 1 < m:
                 cm = CAP_RE.match(ls[k + 1])
                 if cm:
                     caption = cm.group(1).strip()
                     k += 1
+            items.append(("img", (path, caption)))
+            k += 1
+            continue
+        mdim = MD_IMG_RE.match(s)
+        if mdim:
+            path = _resolve_img(mdim.group(2).strip(), base_dir)
+            caption = mdim.group(1).strip() or None
             items.append(("img", (path, caption)))
             k += 1
             continue
@@ -513,6 +530,7 @@ def parse_book(src=None):
     返回 dict：{"preface": str|None, "afterword": str|None,
                 "chapters": [{"title": str|None, "intro": str|None, "articles": [...]}]}"""
     src = src or SRC
+    src_dir = os.path.dirname(os.path.abspath(src))
     raw = open(src, encoding="utf-8").read().split("\n")
     n = len(raw)
     preface, afterword = [], []
@@ -569,7 +587,7 @@ def parse_book(src=None):
                     break
                 body.append(sj)
                 j += 1
-            art = {"title": title, "author": author, "items": classify(body)}
+            art = {"title": title, "author": author, "items": classify(body, base_dir=src_dir)}
             if chapters:
                 chapters[-1]["articles"].append(art)
             else:
