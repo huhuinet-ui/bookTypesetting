@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """把「目录页 + 前言 + 正文 + 后记」合成一本书（一个 Word 文档）。
 
-用法：python book_full.py
-默认读 深度写作营.md（正文用 book_layout.py 的样式，目录用 book_toc_horizontal.py 的横排样式），
-输出 深度写作营_全书.docx。
+用法：python book_full.py ["要合成的书.md" ["书名"]]
+不带参数时用下方 SRC/BOOK_NAME 默认值；输出的 docx 自动生成在源文件同目录、同名 .docx。
 
 源文件约定写法见 book_layout.py 顶部注释：
   # 前言 / # 后记        —— 前言页、后记页
@@ -28,10 +27,11 @@ import fitz
 import book_layout as book
 import book_toc_horizontal as toc
 
-# ==================== 输入与输出（改这里） ====================
-SRC = r"D:\纸质文集\你总是有选择的.md"         # 正文源文件
-BOOK_NAME = "你总是有选择的"        # 页眉上显示的书名
-OUT = r"D:\纸质文集\你总是有选择的.docx"   # 输出的合并文档
+# ==================== 输入与输出（命令行传参，带默认值） ====================
+SRC = sys.argv[1] if len(sys.argv) > 1 else r"D:\纸质文集\你总是有选择的.md"   # 正文源文件
+BOOK_NAME = sys.argv[2] if len(sys.argv) > 2 else "你总是有选择的"              # 页眉上显示的书名
+OUT = os.path.join(os.path.dirname(os.path.abspath(SRC)),
+                   os.path.splitext(os.path.basename(SRC))[0] + ".docx")        # 输出到源文件同目录、同名
 TOC_TITLE = "目录"                          # 目录页大标题
 PREFACE_TITLE = "自序"                      # 前言页大标题
 AFTERWORD_TITLE = "后记"                    # 后记页大标题
