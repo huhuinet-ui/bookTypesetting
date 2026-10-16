@@ -18,6 +18,7 @@
 
   #### 标题：文章标题    （必填）一篇文章的开头
   作者：xxx             （可选）作者；没有作者就不画标题下划线和作者名
+  诗歌：                （可选）整篇按诗歌排版：每个 ##### 是一首诗（一首一页、诗句居中）
   （正文段落，空行分段）
 
   ##### 小标题：xxx      （可选）文章内的小节标题，加粗左对齐
@@ -175,6 +176,24 @@ IMG_LINE_COLOR = None
 # 引线颜色。None=黑色；想自定义就写 RGBColor(红,绿,蓝)。
 IMG_LINE_GAP = 14
 # 图片和图注之间的空隙（磅）：引线竖线就画在这段空隙里，图注会跟着往下移。
+
+# ---- 诗歌排版（源文件里用「诗歌：」标记整篇为诗歌）----
+POEM_TITLE_SIZE = 12
+# 诗题字号（磅）。
+POEM_TOP_LINES = 4
+# 每首诗（从第二首起）从页顶往下空几行。
+POEM_TITLE_AFTER = 12
+# 诗题到副题/诗句的空隙（磅）。
+POEM_META_SIZE = 9
+# 副题（——xxx）/日期（xxxx年xx月）字号（磅）。
+POEM_META_AFTER = 10
+# 副题/日期到诗句的空隙（磅）。
+POEM_LINE_SIZE = 10.5
+# 诗句字号（磅）。
+POEM_LINE = 26
+# 诗句行距（磅，固定）。
+POEM_STANZA_GAP = 14
+# 诗节（空行）之间的额外空隙（磅）。
 
 # ---- 页眉与页码 ----
 HEAD_SIZE = 6
@@ -579,9 +598,12 @@ def _resolve_img(path, base_dir):
     return os.path.normpath(os.path.join(base_dir, path))
 
 
-def classify(lines, base_dir=None):
+def classify(lines, base_dir=None, poem=False):
     """把一篇文章的正文行分类成 items 列表：
-    ('p', text) 正文段  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图"""
+    ('p', text) 正文段  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图
+    poem=True 时改用诗歌规则：('h' 诗题) ('meta' 副题/日期) ('poem' 诗句) ('stanza' 诗节分隔)"""
+    if poem:
+        return _classify_poem(lines, base_dir)
     ls = [clean_line(s) for s in lines]
     items, m, k = [], len(ls), 0
     while k < m:
@@ -621,6 +643,55 @@ def classify(lines, base_dir=None):
             items.append(("h", s))
         else:
             items.append(("p", s))
+        k += 1
+    return items
+
+
+def _classify_poem(lines, base_dir=None):
+    """诗歌分类：##### → 诗题(h)；「——xxx」副题、「xxxx年xx月」日期 → (meta)；
+    普通行 → 诗句(poem)；空行 → 诗节分隔(stanza)。"""
+    ls = [clean_line(s) for s in lines]
+    items, m, k = [], len(ls), 0
+    while k < m:
+        s = ls[k]
+        if not s:
+            k += 1
+            while k < m and not ls[k]:
+                k += 1
+            # 空行只在「前面是诗句、后面还有非标题内容」时算诗节分隔
+            if items and k < m and items[-1][0] == "poem" and not SUB_RE.match(ls[k]):
+                items.append(("stanza", None))
+            continue
+        sm = SUB_RE.match(s)
+        if sm:
+            items.append(("h", sm.group(1).strip()))
+            k += 1
+            continue
+        im = IMG_RE.match(s)
+        if im:
+            path = _resolve_img(im.group(1).strip(), base_dir)
+            caption = None
+            if k + 1 < m:
+                cm = CAP_RE.match(ls[k + 1])
+                if cm:
+                    caption = cm.group(1).strip()
+                    k += 1
+            items.append(("img", (path, caption)))
+            k += 1
+            continue
+        mdim = MD_IMG_RE.match(s)
+        if mdim:
+            path = _resolve_img(mdim.group(2).strip(), base_dir)
+            caption = mdim.group(1).strip() or None
+            items.append(("img", (path, caption)))
+            k += 1
+            continue
+        if re.fullmatch(r"\d{4}\s*年\s*\d{1,2}\s*月(\s*\d{1,2}\s*[日号])?", s):
+            items.append(("meta", s))
+        elif s.startswith("——") or s.startswith("--"):
+            items.append(("meta", "——" + s.lstrip("-— ")))
+        else:
+            items.append(("poem", s))
         k += 1
     return items
 
@@ -693,7 +764,16 @@ def parse_book(src=None):
                     break
                 body.append(sj)
                 j += 1
-            art = {"title": title, "author": author, "items": classify(body, base_dir=src_dir)}
+            # 「诗歌：」标记：整篇按诗歌排版（每首诗一页、诗句居中）
+            poem = False
+            body2 = []
+            for ln in body:
+                if re.fullmatch(r"诗歌\s*[:：]?\s*", ln):
+                    poem = True
+                else:
+                    body2.append(ln)
+            art = {"title": title, "author": author, "poem": poem,
+                   "items": classify(body2, base_dir=src_dir, poem=poem)}
             if chapters:
                 chapters[-1]["articles"].append(art)
             else:
@@ -790,6 +870,10 @@ def build_article(doc, art, first, recto=True):
         set_para(gp, LEFT, 0, 0, BODY_LINE)
         R(gp, "", size=BODY_SIZE)
 
+    if art.get("poem"):
+        _render_poems(doc, art["items"])
+        return
+
     page_h_pt = (PAGE_H - M_TOP - M_BOT) * 72 / 25.4
     img_max_w = (IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0) * IMG_MAX_W_RATIO
     group_h = 0.0
@@ -816,6 +900,44 @@ def build_article(doc, art, first, recto=True):
         else:  # num
             set_para(p, LEFT, 0, BODY_AFTER, BODY_LINE)
             R(p, text, cn=F_BODY, size=BODY_SIZE)
+
+
+def _render_poems(doc, items):
+    """渲染诗歌：每个诗题(h)从第二首起另起一页；诗句居中、行距放宽；空行=诗节留白。"""
+    first_poem = True
+    stanza = False
+    for kind, text in items:
+        if kind == "h":
+            if not first_poem:
+                for k in range(POEM_TOP_LINES):
+                    sp = doc.add_paragraph()
+                    set_para(sp, LEFT, 0, 0, BODY_LINE)
+                    if k == 0:
+                        sp.paragraph_format.page_break_before = True
+                    R(sp, "", size=BODY_SIZE)
+            p = doc.add_paragraph()
+            set_para(p, CENTER, 0, POEM_TITLE_AFTER, 1.0)
+            R(p, text, cn=F_TITLE, size=POEM_TITLE_SIZE)
+            first_poem = False
+            stanza = False
+        elif kind == "meta":
+            p = doc.add_paragraph()
+            set_para(p, CENTER, 0, POEM_META_AFTER, 1.0)
+            R(p, text, cn=F_BODY, size=POEM_META_SIZE)
+            stanza = False
+        elif kind == "poem":
+            p = doc.add_paragraph()
+            set_para(p, CENTER, 0, 0, POEM_LINE)
+            if stanza:
+                p.paragraph_format.space_before = Pt(POEM_STANZA_GAP)
+            R(p, text, cn=F_BODY, size=POEM_LINE_SIZE)
+            stanza = False
+        elif kind == "stanza":
+            stanza = True
+        elif kind == "img":
+            path, caption = text
+            add_image(doc, path, caption)
+            stanza = False
 
 
 def add_chapter_page(doc, title, intro=None):
