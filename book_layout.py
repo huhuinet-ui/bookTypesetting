@@ -156,6 +156,24 @@ CAPTION_SIZE = 9
 # 图注字号（磅）：9 磅，居中加粗，放在图片正下方。
 IMAGE_MAX_W = None
 # 插图最大宽度（厘米）。None=自动用版心宽（=纸张宽-左右边距），超过会自动缩到该宽度。
+IMG_MAX_W_RATIO = 0.8
+# 图片最大宽度占版心宽的比例（0~1）。改小图片会等比变小，一页能多放几张；1.0=占满版心宽。
+
+# ---- 插图装饰（图片底下衬色块 + 图注引线，参考《秀茹的一生》）----
+IMG_BLOCK_ON = True
+# 开关：图片底下要不要衬一块色块（像照片贴在卡纸上）。True=有；False=没有。
+IMG_BLOCK_COLOR = None
+# 色块颜色。None=自动用书籍主色调 BOOK_COLOR；想自定义就写 RGBColor(红,绿,蓝)。
+IMG_BLOCK_SIZE = 0.7
+# 色块的尺寸 = 图片长宽的该比例。0.5=色块长宽各为图片的一半。
+IMG_BLOCK_EXPOSE = 6
+# 色块往左下角露出的量（磅）：左、下各露出这么多，其余部分被图片盖住。
+IMG_LINE_ON = True
+# 开关：图注要不要用折线连到图片（引线）。True=有；False=没有。
+IMG_LINE_COLOR = None
+# 引线颜色。None=黑色；想自定义就写 RGBColor(红,绿,蓝)。
+IMG_LINE_GAP = 14
+# 图片和图注之间的空隙（磅）：引线竖线就画在这段空隙里，图注会跟着往下移。
 
 # ---- 页眉与页码 ----
 HEAD_SIZE = 6
@@ -426,14 +444,48 @@ def add_textbox(doc, text, width_cm=INTRO_BOX_W, size=INTRO_SIZE, line=1.0):
     r._r.append(parse_xml(xml))
 
 
-def add_image(doc, path, caption=None, max_width_cm=None):
-    """插图：图片居中；可选图注（居中加粗）。图片超过 max_width_cm 会自动缩到该宽度。"""
-    if max_width_cm is None:
-        max_width_cm = IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0
-    p = doc.add_paragraph()
-    set_para(p, CENTER, 0, 0, 1.0)
-    r = p.add_run()
+def _img_block(p, w_pt, h_pt, left_pt, fill_hex):
+    """在图片段落里锚定一个色块矩形：衬在图片底下、随段落流动（相对版心/段落定位）。"""
+    blk_w = w_pt * IMG_BLOCK_SIZE
+    blk_h = h_pt * IMG_BLOCK_SIZE
+    blk_left = left_pt - IMG_BLOCK_EXPOSE
+    blk_top = h_pt * (1 - IMG_BLOCK_SIZE) + IMG_BLOCK_EXPOSE
+    vml = ('<w:pict xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+           'xmlns:v="urn:schemas-microsoft-com:vml" '
+           'xmlns:o="urn:schemas-microsoft-com:office:office">'
+           '<v:rect id="imgblk" o:allowincell="f" '
+           f'style="position:absolute;margin-left:{blk_left:.1f}pt;margin-top:{blk_top:.1f}pt;'
+           f'width:{blk_w:.1f}pt;height:{blk_h:.1f}pt;'
+           'z-index:-251658240;'
+           'mso-position-horizontal-relative:margin;mso-position-vertical-relative:paragraph" '
+           f'fillcolor="#{fill_hex}" stroked="f"/>'
+           '</w:pict>')
+    run = p.add_run()
+    run._r.append(parse_xml(vml))
+
+
+def _img_line(p, left_pt, y0, y1, x_end, color_hex):
+    """图注引线：竖线（left_pt, y0→y1）+ 横线（left_pt→x_end, 高 y1），L 形折线连到图注。"""
+    vml = ('<w:pict xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+           'xmlns:v="urn:schemas-microsoft-com:vml" '
+           'xmlns:o="urn:schemas-microsoft-com:office:office">'
+           f'<v:line id="imgline" from="{left_pt:.1f}pt,{y0:.1f}pt" to="{left_pt:.1f}pt,{y1:.1f}pt" '
+           f'style="position:absolute;z-index:251658240;'
+           'mso-position-horizontal-relative:margin;mso-position-vertical-relative:paragraph" '
+           f'strokecolor="#{color_hex}" strokeweight="0.75pt"/>'
+           f'<v:line id="imgline2" from="{left_pt:.1f}pt,{y1:.1f}pt" to="{x_end:.1f}pt,{y1:.1f}pt" '
+           f'style="position:absolute;z-index:251658240;'
+           'mso-position-horizontal-relative:margin;mso-position-vertical-relative:paragraph" '
+           f'strokecolor="#{color_hex}" strokeweight="0.75pt"/>'
+           '</w:pict>')
+    run = p.add_run()
+    run._r.append(parse_xml(vml))
+
+
+def image_layout_size(path, max_width_cm):
+    """返回图片按 max_width_cm 缩放后的 (宽度cm, 宽度pt, 高度pt)。"""
     native_cm = None
+    px_w = px_h = None
     try:
         from PIL import Image
         with Image.open(path) as im:
@@ -443,14 +495,59 @@ def add_image(doc, path, caption=None, max_width_cm=None):
         native_cm = px_w / dpi_x * 2.54
     except Exception:
         native_cm = None
-    if native_cm is not None and native_cm <= max_width_cm:
-        r.add_picture(path, width=Cm(native_cm))
-    else:
-        r.add_picture(path, width=Cm(max_width_cm))
+    w_cm = native_cm if (native_cm is not None and native_cm <= max_width_cm) else max_width_cm
+    w_pt = w_cm * 28.3465
+    h_pt = w_pt * (px_h / px_w) if (px_w and px_h) else w_pt * 0.75
+    return w_cm, w_pt, h_pt
+
+
+def image_total_height(path, caption, max_width_cm):
+    """一张图（图 + 图注 + 段距）在正文里占的总高度（磅），用于判断一页能放几张。"""
+    _, _, h_pt = image_layout_size(path, max_width_cm)
+    extra = BODY_AFTER
     if caption:
-        pc = doc.add_paragraph()
-        set_para(pc, CENTER, 0, BODY_AFTER, 1.0)
-        R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
+        extra += CAPTION_SIZE * 1.2
+        if IMG_LINE_ON:
+            extra += IMG_LINE_GAP
+    return h_pt + extra
+
+
+def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
+    """插图：图片居中；图片底下可衬色块（IMG_BLOCK_*）；图注可加折线引线（IMG_LINE_*）。"""
+    if max_width_cm is None:
+        base = IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0
+        max_width_cm = base * IMG_MAX_W_RATIO
+    text_w_pt = (PAGE_W - M_LEFT - M_RIGHT) * 72 / 25.4
+    w_cm, w_pt, h_pt = image_layout_size(path, max_width_cm)
+    p = doc.add_paragraph()
+    set_para(p, CENTER, 0, 0, 1.0)
+    if page_break:
+        p.paragraph_format.page_break_before = True
+    r = p.add_run()
+    r.add_picture(path, width=Cm(w_cm))
+    left_pt = (text_w_pt - w_pt) / 2
+
+    if IMG_BLOCK_ON:
+        _img_block(p, w_pt, h_pt, left_pt,
+                   str(IMG_BLOCK_COLOR) if IMG_BLOCK_COLOR else str(BOOK_COLOR))
+
+    if caption:
+        p.paragraph_format.keep_with_next = True   # 图片与图注同页，不分开
+        if IMG_LINE_ON:
+            cap_w = len(caption) * CAPTION_SIZE
+            cap_left = (text_w_pt - cap_w) / 2
+            line_end = max(cap_left - 4, left_pt + 12)
+            cap_y = h_pt + IMG_LINE_GAP
+            _img_line(p, left_pt, h_pt, cap_y, line_end,
+                      str(IMG_LINE_COLOR) if IMG_LINE_COLOR else "000000")
+            pc = doc.add_paragraph()
+            set_para(pc, CENTER, 0, BODY_AFTER, 1.0)
+            pc.paragraph_format.space_before = Pt(IMG_LINE_GAP - CAPTION_SIZE * 0.6)   # 图注上移，让文字中线和引线横线对齐
+            R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
+        else:
+            pc = doc.add_paragraph()
+            set_para(pc, CENTER, 0, BODY_AFTER, 1.0)
+            R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
     else:
         p.paragraph_format.space_after = Pt(BODY_AFTER)
     return p
@@ -682,11 +779,21 @@ def build_article(doc, art, first, recto=True):
         set_para(gp, LEFT, 0, 0, BODY_LINE)
         R(gp, "", size=BODY_SIZE)
 
+    page_h_pt = (PAGE_H - M_TOP - M_BOT) * 72 / 25.4
+    img_max_w = (IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0) * IMG_MAX_W_RATIO
+    group_h = 0.0
     for kind, text in art["items"]:
         if kind == "img":
             path, caption = text
-            add_image(doc, path, caption)
+            h = image_total_height(path, caption, img_max_w)
+            if group_h > 0 and group_h + h > page_h_pt:
+                add_image(doc, path, caption, img_max_w, page_break=True)
+                group_h = h
+            else:
+                add_image(doc, path, caption, img_max_w)
+                group_h += h
             continue
+        group_h = 0.0
         p = doc.add_paragraph()
         if kind == "h":
             set_para(p, LEFT, 0, BODY_AFTER, BODY_LINE)
