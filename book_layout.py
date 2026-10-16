@@ -9,8 +9,9 @@
 想改样式：只改下面"样式参数区"里的数值，改完重新运行本脚本即可。
 
 --------------------- 源文件的约定写法 ---------------------
-  # 前言                （可选）前言页；下面是前言正文（可多段）
-  # 后记                （可选）后记页；下面是后记正文（可多段）
+  # 自序 / # 前言 / # 序言 / # 代序 / # 写在前面
+                         （可选）前言页；排在目录之前，下面是前言正文（可多段）
+  # 后记 / # 跋          （可选）后记页；排在正文之后，下面是后记正文（可多段）
 
   ### 第一章            （可选）章节名，章节页会单独占一页
   简介：……             （可选）紧跟章节名写一行，作为章节页文本框里的引言
@@ -556,6 +557,8 @@ def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
 NOTES = ["（这中间是不是接得有点突兀）",
          "（这里感觉缺了什么，但是又不知道怎么去连接得更好）"]
 END_PUNCT = "。！？!?；;：:…，,、～~”」』）)"
+PREFACE_KEYS = ("自序", "前言", "序言", "代序", "写在前面")   # 单 # 开头 → 前言页（目录之前）
+AFTERWORD_KEYS = ("后记", "跋")                              # 单 # 开头 → 后记页（正文之后）
 IMG_RE = re.compile(r"^图片\s*[:：]\s*(.+)$")
 CAP_RE = re.compile(r"^图片名\s*[:：]\s*(.+)$")
 MD_IMG_RE = re.compile(r"^!\s*\[([^\]]*)\]\s*\(([^)]+)\)")   # ![图注](路径) 标准 Markdown 图片
@@ -631,6 +634,7 @@ def parse_book(src=None):
     raw = open(src, encoding="utf-8").read().split("\n")
     n = len(raw)
     preface, afterword = [], []
+    preface_title = afterword_title = None
     chapters = []
     i = 0
     while i < n:
@@ -638,10 +642,15 @@ def parse_book(src=None):
         if not s:
             i += 1
             continue
-        # 前言 / 后记（单 # 开头，且不是 ## 或 ### 或 ####）
+        # 前言/自序/序言/代序/写在前面 与 后记/跋（单 # 开头，且不是 ## 或 ### 或 ####）
         if s.startswith("# ") and not s.startswith("##"):
             kind = s.lstrip("#").strip()
-            target = preface if kind == "前言" else (afterword if kind == "后记" else None)
+            if kind in PREFACE_KEYS:
+                target, preface_title = preface, kind
+            elif kind in AFTERWORD_KEYS:
+                target, afterword_title = afterword, kind
+            else:
+                target = None
             i += 1
             if target is None:
                 continue
@@ -694,7 +703,9 @@ def parse_book(src=None):
         i += 1
     return {
         "preface": "\n".join(preface) if preface else None,
+        "preface_title": preface_title,
         "afterword": "\n".join(afterword) if afterword else None,
+        "afterword_title": afterword_title,
         "chapters": chapters,
     }
 

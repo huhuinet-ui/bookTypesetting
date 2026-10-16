@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-"""把「目录页 + 前言 + 正文 + 后记」合成一本书（一个 Word 文档）。
+"""把「前言 + 目录 + 正文 + 后记」合成一本书（一个 Word 文档）。
 
 用法：python book_full.py ["要合成的书.md" ["书名"]]
 不带参数时用下方 SRC/BOOK_NAME 默认值；输出的 docx 自动生成在源文件同目录、同名 .docx。
 
 源文件约定写法见 book_layout.py 顶部注释：
-  # 前言 / # 后记        —— 前言页、后记页
+  # 自序 / # 前言 / # 序言 / # 代序 / # 写在前面   —— 前言页（排在目录之前）
+  # 后记 / # 跋         —— 后记页（排在正文之后）
   ### 章节 + 简介：      —— 章节页（章节名 + 下划线 + 文本框引言）
   #### 标题：+ 作者：    —— 文章（无作者则省略标题下划线和作者名）
   图片：+ 图片名：       —— 插图 + 图注
 
+成书顺序：前言页 → 目录页 → 正文 → 后记页（前言/目录不显示页码，正文从第 1 页开始；
+目录里「前言/自序」只列标题、不写页码）。
 目录页码自动计算：脚本会先单独排一遍正文并转 PDF，量出每章/每篇的真实起始页，再写进目录。
 改样式：分别去改 book_layout.py 和 book_toc_horizontal.py 顶部参数区。
 """
@@ -33,8 +36,6 @@ BOOK_NAME = sys.argv[2] if len(sys.argv) > 2 else "你总是有选择的"       
 OUT = os.path.join(os.path.dirname(os.path.abspath(SRC)),
                    os.path.splitext(os.path.basename(SRC))[0] + ".docx")        # 输出到源文件同目录、同名
 TOC_TITLE = "目录"                          # 目录页大标题
-PREFACE_TITLE = "自序"                      # 前言页大标题
-AFTERWORD_TITLE = "后记"                    # 后记页大标题
 
 # ---- 目录里章节/文章行的样式 ----
 CHAPTER_TOC_SIZE = 13        # 目录里章节行的字号（磅）
@@ -60,14 +61,17 @@ def add_toc_line(doc, text, page, size, bold=False, indent_pt=0, pad=None):
     toc.R(p, num, size)
 
 
-def build_toc(doc, chapters, page_map, pad=None):
-    """在文档里排目录页（横排）。"""
+def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
+    """在文档里排目录页（横排）。preface_title：前言/自序，只列标题、不写页码。"""
     tp = doc.add_paragraph()
     tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     tp.paragraph_format.space_before = Pt(toc.TOP_LINES * toc.ENTRY_SIZE)
     tp.paragraph_format.space_after = Pt(toc.TITLE_AFTER)
     tp.paragraph_format.line_spacing = 1.0
     toc.R(tp, TOC_TITLE, toc.TITLE_SIZE, bold=True)
+
+    if preface_title:
+        add_toc_line(doc, preface_title, "", CHAPTER_TOC_SIZE, bold=CHAPTER_TOC_BOLD)
 
     for ch in chapters:
         if ch["title"] is not None:
@@ -194,17 +198,25 @@ def main():
     page_map, total_pages = measure_pages(chapters)
     pad = len(str(total_pages)) if total_pages > 0 else 0   # 页码补零位数（87页→2位，123页→3位）
 
-    doc, _sec1 = book.new_doc()      # 第一节 = 目录页（开本/边距与正文一致）
-    build_toc(doc, chapters, page_map, pad=pad)
+    doc, sec1 = book.new_doc()      # 第一节 = 前言页（无前言时就是目录页）
 
-    if data["preface"] is not None:  # 目录后插前言页
-        add_front_matter(doc, PREFACE_TITLE, data["preface"])
+    # 前言/自序页排在最前（目录之前），暗码（不显示页码）
+    if data["preface"] is not None:
+        book.clear_header(sec1)
+        book.add_front_page(doc, data["preface_title"], data["preface"])
+        toc_sec = doc.add_section(WD_SECTION.NEW_PAGE)   # 目录页另起一页
+        remove_page_number_start(toc_sec._sectPr)
+        book.clear_header(toc_sec)
+    else:
+        toc_sec = sec1
+
+    build_toc(doc, chapters, page_map, pad=pad, preface_title=data["preface_title"])
 
     sec2 = doc.add_section(WD_SECTION.ODD_PAGE)   # 正文第一节：从奇数页(右页)开始，保证正文页码奇偶=物理页奇偶，色块/标题镜像才和页眉一致
     build_body(doc, chapters, sec2, pad=pad, page_map=page_map)
 
     if data["afterword"] is not None:  # 最后一篇文章后插后记页
-        add_front_matter(doc, AFTERWORD_TITLE, data["afterword"])
+        add_front_matter(doc, data["afterword_title"], data["afterword"])
 
     if book.CROP_MARKS:                # 每页四角加裁切角线
         for sec in doc.sections:
