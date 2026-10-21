@@ -44,20 +44,27 @@ ARTICLE_INDENT_PT = 24       # 目录里文章行相对章节行缩进多少（�
 # ==========================================================
 
 
-def add_toc_line(doc, text, page, size, bold=False, indent_pt=0, pad=None):
-    """目录里加一行：标题左对齐（可缩进/加粗），页码右对齐（按 pad 补零）。"""
+def add_toc_line(doc, text, page, size, bold=False, indent_pt=0, pad=None, keep_next=False):
+    """目录里加一行：标题左对齐（可缩进/加粗），页码右对齐（按 pad 补零）。
+    右侧为页码预留一段宽度：标题过长时在该宽度内折行，保证标题与页码之间至少空一格；
+    keep_next=True 时本行与下一行同页，避免目录末页只剩一行（寡行）。"""
     p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.space_after = Pt(0)
-    p.paragraph_format.line_spacing = toc.ENTRY_SPACING
-    if indent_pt:
-        p.paragraph_format.left_indent = Pt(indent_pt)
+    pf = p.paragraph_format
+    pf.space_before = Pt(0)
+    pf.space_after = Pt(0)
+    pf.line_spacing = toc.ENTRY_SPACING
+    pf.widow_control = True          # 段内不跨页留孤行
+    if keep_next:
+        pf.keep_with_next = True     # 与下一行绑定同页，防目录末页只有一行
+    num = "" if not page else (str(page).zfill(pad) if pad else str(page))
     text_w_mm = book.PAGE_W - book.M_LEFT - book.M_RIGHT
-    p.paragraph_format.tab_stops.add_tab_stop(
-        Mm(text_w_mm), WD_TAB_ALIGNMENT.RIGHT, toc.ENTRY_LEADER)
+    digits = len(num) if num else (pad or 1)
+    pf.right_indent = Mm(digits * 2.4 + 3)   # 为页码预留的右侧宽度（含一个空格）
+    if indent_pt:
+        pf.left_indent = Pt(indent_pt)
+    pf.tab_stops.add_tab_stop(Mm(text_w_mm), WD_TAB_ALIGNMENT.RIGHT, toc.ENTRY_LEADER)
     toc.R(p, text, size, bold=bold)
     p.add_run("\t")
-    num = "" if not page else (str(page).zfill(pad) if pad else str(page))
     toc.R(p, num, size)
 
 
@@ -70,23 +77,39 @@ def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
     tp.paragraph_format.line_spacing = 1.0
     toc.R(tp, TOC_TITLE, toc.TITLE_SIZE, bold=True)
 
+    entries = []
     if preface_title:
-        add_toc_line(doc, preface_title, "", CHAPTER_TOC_SIZE, bold=CHAPTER_TOC_BOLD)
-
+        entries.append((preface_title, "", CHAPTER_TOC_SIZE, CHAPTER_TOC_BOLD, 0))
     for ch in chapters:
         if ch["title"] is not None:
-            add_toc_line(doc, ch["title"], page_map.get(ch["title"], ""),
-                         CHAPTER_TOC_SIZE, bold=CHAPTER_TOC_BOLD, pad=pad)
+            entries.append((ch["title"], page_map.get(ch["title"], ""),
+                            CHAPTER_TOC_SIZE, CHAPTER_TOC_BOLD, 0))
         for a in ch["articles"]:
-            add_toc_line(doc, a["title"], page_map.get(a["title"], ""),
-                         toc.ENTRY_SIZE, indent_pt=ARTICLE_INDENT_PT, pad=pad)
+            entries.append((a["title"], page_map.get(a["title"], ""),
+                            toc.ENTRY_SIZE, False, ARTICLE_INDENT_PT))
+    last = len(entries) - 1
+    for i, (text, page, size, bold, indent_pt) in enumerate(entries):
+        # 只把「倒数第二行」与最后一行绑定同页：防止目录末页只剩一行（寡行）。
+        # 不能给所有行都加 keep_with_next，否则 Word 会把整块目录推到下一页，首页反而只剩标题。
+        add_toc_line(doc, text, page, size, bold=bold, indent_pt=indent_pt,
+                     pad=pad, keep_next=(i == last - 1))
 
 
-def build_body(doc, chapters, first_sec, pad=None, page_map=None):
+def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
     """在 doc 里排正文（第一个正文节用 first_sec，正文页码从 1 开始）。
     篇章页单独成节、置空页眉（暗码：不显示页码）；章内文章合为一节、带奇偶页眉。
-    page_map：每篇标题 → 正文起始页（用于判断该页是奇数页/偶数页，好让标题色块镜像）。"""
+    page_map：每篇标题 → 正文起始页（用于判断该页是奇数页/偶数页，好让标题色块镜像）。
+    anchors：传入一个空列表时，会给每个章节/文章标题挂一个唯一隐藏锚点，并把 (锚点, 标题) 追加进去，
+             供 measure_pages 精确定位页码（正式文档传 None，不挂锚点）。"""
     set_page_number_start(first_sec._sectPr, 1)   # 只有正文第一节重置页码，其余节连续编号
+
+    def _tok(title):
+        # 生成唯一锚点 token 并登记；anchors 为 None（正式文档）时返回 None，不挂锚点
+        if anchors is None:
+            return None
+        tok = f"zq{len(anchors):04d}wz"
+        anchors.append((tok, title))
+        return tok
 
     def _recto(title):
         # 正文页码 1 起：奇数页=右页(recto)→色块在右/标题右对齐；偶数页=左页(verso)→色块在左/标题左对齐
@@ -104,16 +127,16 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None):
                 remove_page_number_start(page_sec._sectPr)
             book.clear_header(page_sec)                      # 暗码：篇章页不显示页码
             book.add_page_background(page_sec, str(book.BOOK_COLOR))   # 篇章页整页底色（用书籍主色调）
-            book.add_chapter_page(doc, ch["title"], ch.get("intro"))
+            book.add_chapter_page(doc, ch["title"], ch.get("intro"), anchor=_tok(ch["title"]))
             art_sec = doc.add_section(WD_SECTION.NEW_PAGE)
             remove_page_number_start(art_sec._sectPr)
             book.setup_header(art_sec, chapter=ch["title"], pad=pad)   # 文章节奇偶页眉
             for i, a in enumerate(ch["articles"]):
-                book.build_article(doc, a, i == 0, recto=_recto(a["title"]))
+                book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
         else:
             book.setup_header(first_sec, pad=pad)
             for i, a in enumerate(ch["articles"]):
-                book.build_article(doc, a, i == 0, recto=_recto(a["title"]))
+                book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
 
 
 def add_front_matter(doc, title, text):
@@ -145,12 +168,15 @@ def set_page_number_start(sectPr, start=1):
 
 def measure_pages(chapters):
     """单独排一遍正文、转 PDF，量出每章/每篇的起始页（正文页码，从 1 起）。
+    用「唯一隐藏锚点」定位（排版时给每个标题挂一个正文里不会出现的 token），
+    避免短标题（如「启程/礼物/意义」）被正文里的同名词提前命中而页码重复。
     返回 (page_map, total_pages)：total_pages 用于算页码补零位数。"""
     tmp_docx = os.path.join(tempfile.gettempdir(), "_bookfull_body.docx")
     tmp_pdf = os.path.join(tempfile.gettempdir(), "_bookfull_body.pdf")
 
     doc, sec = book.new_doc()
-    build_body(doc, chapters, sec)
+    anchors = []                          # [(token, title), ...]
+    build_body(doc, chapters, sec, anchors=anchors)
     doc.save(tmp_docx)
 
     ps = ("$ErrorActionPreference = 'Stop'; "
@@ -171,17 +197,11 @@ def measure_pages(chapters):
     d = fitz.open(tmp_pdf)
     total_pages = len(d)
     full = [re.sub(r"\s+", "", d[i].get_text()) for i in range(total_pages)]
-    titles = []
-    for ch in chapters:
-        if ch["title"] is not None:
-            titles.append(ch["title"])
-        titles.extend(a["title"] for a in ch["articles"])
     page_map = {}
-    for t in titles:
-        tn = re.sub(r"\s+", "", t)
+    for tok, title in anchors:
         for i, txt in enumerate(full):
-            if tn in txt:
-                page_map[t] = i + 1
+            if tok in txt:
+                page_map[title] = i + 1
                 break
     d.close()
     os.remove(tmp_docx)

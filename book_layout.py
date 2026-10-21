@@ -21,6 +21,12 @@
   诗歌：                （可选）整篇按诗歌排版：每个 ##### 是一首诗（一首一页、诗句居中）
   （正文段落，空行分段）
 
+  {{文字}}              （可选）特殊字体标记，字体=F_BODY_ALT。三种写法：
+                        · 段内几个字：正文里{{这几个字}}换字体
+                        · 一整段　　：{{整段用大括号包起来}}
+                        · 连续多段　：单独一行 {{ 开始、单独一行 }} 结束，中间各段整体换字体
+                        可与 **着色** 叠加。分隔符在 ALT_OPEN / ALT_CLOSE 改，字体在 F_BODY_ALT 改。
+
   ##### 小标题：xxx      （可选）文章内的小节标题，加粗左对齐
 
   图片：C:\\图\\a.jpg   （可选）插图，插在正文当前位置（自定义写法）
@@ -74,12 +80,13 @@ HEADER_DIST = 24
 F_TITLE = "方正清刻本悦宋简体"    # 文章标题 / 章节名 / 前言后记标题用什么字体
 F_AUTHOR = "方正楷体简体"        # 作者名字用什么字体
 F_BODY = "方正书宋_GBK"          # 正文用什么字体
+F_BODY_ALT = "方正楷体_GBK"      # 正文里「特殊字体段/字」用什么字体：源文件里用 {{ }} 包起来的部分即用它（详见下方 ALT_OPEN 说明）
 F_HEAD = "方正清刻本悦宋简体"    # 页眉上的书名用什么字体
 F_NUM = "方正楷体简体"           # 页码用什么字体
 
 # ---- 文章标题 ----
-TITLE_SIZE = 14
-# 标题字号（磅）：14 磅，就是 Word 里的"四号"。
+TITLE_SIZE = 15
+# 标题字号（磅）：14 磅《秀茹的一生》，就是 Word 里的"四号"。
 TITLE_TOP_LINES = 3
 # 标题上方空几行：每篇开头，标题从页面顶部往下空 3 行才开始（参考《秀茹的一生》：标题距上边距约 20mm）。
 RULE_W, RULE_COLOR, RULE_PT = 2.54, "000000", 0.5
@@ -95,8 +102,11 @@ DECO_TOP = 177.17
 # 装饰矩形顶边 距成品顶边缘 62.5mm（177.17 磅），比标题顶高约 2.7mm（参考《秀茹的一生》实测）。
 
 # ---- 书籍主色调（统一控制：作者名、章节页底色、标题装饰矩形）----
-BOOK_COLOR = RGBColor(0xDE, 0xB8, 0x87)
-# 书籍主色调：棕褐色 #DEB887。同时用于①作者名颜色 ②章节页整页底色 ③每篇标题处的装饰矩形。
+# 已用色清单（给不同学员配色时避开这些、别撞色；换色后请在此追加一行）：
+#   #DEB887 = RGBColor(0xDE, 0xB8, 0x87)  棕褐色    —— 小维《你总是有选择地》
+#   #A1DBED = RGBColor(0xA1, 0xDB, 0xED)  淡天蓝    —— 江江《行囊里的星光——给钰宝的三十个人生锦囊》
+BOOK_COLOR = RGBColor(0xA1, 0xDB, 0xED)
+# 书籍主色调：当前=淡天蓝 #A1DBED（江江《行囊里的星光》）。同时用于①作者名颜色 ②章节页整页底色 ③每篇标题处的装饰矩形。
 # 换主色只改这一行即可（改成黑色就写 RGBColor(0, 0, 0)）。
 
 # ---- 作者名 ----
@@ -104,7 +114,7 @@ AUTHOR_SIZE = 13
 # 作者名字号（磅）：13 磅。
 
 # ---- 正文 ----
-BODY_SIZE = 9
+BODY_SIZE = 10.5
 # 正文字号（磅）：9 磅，就是 Word 里的"小五"。
 BODY_INDENT = 1.5
 # 首行缩进：每个自然段的第一行往里缩进 1.5 个汉字。
@@ -118,6 +128,15 @@ MARK_COLOR_ON = True
 # 开关：**文字** 标记的部分要不要上色（只上色、不加粗）。True=上色；False=不上色、保持黑色。
 MARK_COLOR = None
 # 标记文字的颜色。None=自动用书籍主色调 BOOK_COLOR；想自定义就写 RGBColor(红, 绿, 蓝)，例如黑色 RGBColor(0, 0, 0)。
+
+# ---- 特殊字体标记（源文件里用 {{文字}} 包起来的部分，改用 F_BODY_ALT 字体，字体名在上方 F_BODY_ALT 改）----
+ALT_OPEN, ALT_CLOSE = "{{", "}}"
+# 三种写法，覆盖「几个字 / 一整段 / 连续多段」：
+#   段内几个字：普通文字{{这几个字用特殊字体}}普通文字
+#   一整段　　：{{把整段用大括号包起来}}
+#   连续多段　：单独一行写 {{  开始，单独一行写 }}  结束，中间所有段落整体用特殊字体
+# 可与 **着色** 叠加使用。想换分隔符就改 ALT_OPEN / ALT_CLOSE。
+_MARK_TOKEN_RE = re.compile("(" + "|".join(re.escape(t) for t in ("**", ALT_OPEN, ALT_CLOSE)) + ")")
 
 # ---- 分页控制（解决「一页只剩一两行字」的孤行）----
 WIDOW_CONTROL = True
@@ -218,6 +237,14 @@ RIGHT = WD_ALIGN_PARAGRAPH.RIGHT
 CENTER = WD_ALIGN_PARAGRAPH.CENTER
 JUSTIFY = WD_ALIGN_PARAGRAPH.JUSTIFY
 BLACK = RGBColor(0, 0, 0)
+WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+
+def add_anchor(p, token):
+    """在段落末尾追加一个隐藏锚点（白色 1 磅 ASCII），仅供测量页码时在 PDF 里定位用。
+    体积极小、不引起换行，因此不影响分页；正式文档不会调用它。"""
+    if token:
+        R(p, token, cn=F_BODY, size=1, color=WHITE, af="Times New Roman")
 
 
 def R(p, text, cn=F_BODY, size=BODY_SIZE, color=BLACK, bold=False,
@@ -232,15 +259,34 @@ def R(p, text, cn=F_BODY, size=BODY_SIZE, color=BLACK, bold=False,
     return r
 
 
-def add_body_para(p, text, cn=F_BODY, size=BODY_SIZE):
-    """渲染正文段落，支持 **着色** 标记（**文字** 只上色、不加粗）。着色部分按 MARK_COLOR_ON/MARK_COLOR 控制。"""
+def add_body_para(p, text, cn=F_BODY, alt_cn=None, size=BODY_SIZE, alt_open=False):
+    """渲染正文段落，支持两种行内标记（可叠加）：
+       **文字**  → 着色（颜色见 MARK_COLOR_ON / MARK_COLOR，只上色不加粗）
+       {{文字}}  → 改用特殊字体 alt_cn（默认取 F_BODY_ALT）
+    alt_open=True 表示进入本段时特殊字体已开启（供连续多段的块标记续接）。
+    返回段末的特殊字体开关状态，供下一段继承。"""
+    if alt_cn is None:
+        alt_cn = F_BODY_ALT
     mark_color = (MARK_COLOR if MARK_COLOR is not None else BOOK_COLOR) if MARK_COLOR_ON else BLACK
-    for i, seg in enumerate(text.split("**")):
-        if not seg:
-            continue
-        colored = (i % 2 == 1)
-        R(p, seg, cn=cn, size=size,
-          color=(mark_color if colored else BLACK))
+    colored, alt, buf = False, alt_open, []
+
+    def flush():
+        if buf:
+            R(p, "".join(buf), cn=(alt_cn if alt else cn), size=size,
+              color=(mark_color if colored else BLACK))
+            buf.clear()
+
+    for tok in _MARK_TOKEN_RE.split(text):
+        if tok == "**":
+            flush(); colored = not colored
+        elif tok == ALT_OPEN:
+            flush(); alt = True
+        elif tok == ALT_CLOSE:
+            flush(); alt = False
+        elif tok:
+            buf.append(tok)
+    flush()
+    return alt
 
 
 def add_page_field(p, size, cn, color=BLACK, underline=False, pad=None):
@@ -600,17 +646,22 @@ def _resolve_img(path, base_dir):
 
 def classify(lines, base_dir=None, poem=False):
     """把一篇文章的正文行分类成 items 列表：
-    ('p', text) 正文段  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图
+    ('p', text) 正文段（可含 {{特殊字体}} 行内标记）  ('palt', text) 整段特殊字体（{{ }} 块内）  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图
     poem=True 时改用诗歌规则：('h' 诗题) ('meta' 副题/日期) ('poem' 诗句) ('stanza' 诗节分隔)"""
     if poem:
         return _classify_poem(lines, base_dir)
     ls = [clean_line(s) for s in lines]
     items, m, k = [], len(ls), 0
+    in_alt = False   # 是否处在「连续多段特殊字体」块内（由单独成行的 {{ / }} 开关）
     while k < m:
         s = ls[k]
         if not s:
             k += 1
             continue
+        if s == ALT_OPEN:      # 单独一行 {{ → 开启特殊字体块
+            in_alt = True; k += 1; continue
+        if s == ALT_CLOSE:     # 单独一行 }} → 结束特殊字体块
+            in_alt = False; k += 1; continue
         sm = SUB_RE.match(s)
         if sm:
             items.append(("h", sm.group(1).strip()))
@@ -633,6 +684,14 @@ def classify(lines, base_dir=None, poem=False):
             path = _resolve_img(mdim.group(2).strip(), base_dir)
             caption = mdim.group(1).strip() or None
             items.append(("img", (path, caption)))
+            k += 1
+            continue
+        if in_alt:                       # 处在块内：整段用特殊字体（保留段内可能出现的 {{}} 也无妨）
+            items.append(("palt", s))
+            k += 1
+            continue
+        if (ALT_OPEN in s) or (ALT_CLOSE in s):   # 段内混排：交给 add_body_para 拆分 {{}}，且不当作小标题
+            items.append(("p", s))
             k += 1
             continue
         pb = (k == 0 or not ls[k - 1])
@@ -843,7 +902,7 @@ def clear_header(sec):
     sec.even_page_header.is_linked_to_previous = False
 
 
-def build_article(doc, art, first, recto=True):
+def build_article(doc, art, first, recto=True, anchor=None):
     align = RIGHT if recto else LEFT   # 标题块镜像：奇数页靠右、偶数页靠左（贴外侧）
     for k in range(TITLE_TOP_LINES):
         sp = doc.add_paragraph()
@@ -854,6 +913,7 @@ def build_article(doc, art, first, recto=True):
     pt = doc.add_paragraph()
     set_para(pt, align, 0, 0, 1.0)
     R(pt, art["title"], cn=F_TITLE, size=TITLE_SIZE)
+    add_anchor(pt, anchor)   # anchor：仅测量页码时传入的隐藏唯一标记（正式文档不传）
 
     add_deco_rect(pt, deco_x(recto), DECO_TOP, DECO_W, DECO_H, str(BOOK_COLOR))
 
@@ -897,6 +957,9 @@ def build_article(doc, art, first, recto=True):
         elif kind == "p":
             set_para(p, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
             add_body_para(p, text)
+        elif kind == "palt":
+            set_para(p, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
+            add_body_para(p, text, cn=F_BODY_ALT)
         else:  # num
             set_para(p, LEFT, 0, BODY_AFTER, BODY_LINE)
             R(p, text, cn=F_BODY, size=BODY_SIZE)
@@ -940,9 +1003,10 @@ def _render_poems(doc, items):
             stanza = False
 
 
-def add_chapter_page(doc, title, intro=None):
+def add_chapter_page(doc, title, intro=None, anchor=None):
     """篇章页：章节名居中 + 居中下划线 +（可选）下方居中文本框。占一整页。
-    换页由「节」的分页负责，这里不再加 page_break。"""
+    换页由「节」的分页负责，这里不再加 page_break。
+    anchor：仅供测量页码时传入的唯一隐藏标记（正式文档不传）。"""
     for k in range(CHAPTER_TOP_LINES):
         sp = doc.add_paragraph()
         set_para(sp, LEFT, 0, 0, BODY_LINE)
@@ -950,6 +1014,7 @@ def add_chapter_page(doc, title, intro=None):
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 0, 1.0)
     R(p, title, cn=F_TITLE, size=CHAPTER_SIZE)
+    add_anchor(p, anchor)
     add_chapter_rule(doc)
     if intro:
         sp = doc.add_paragraph()
