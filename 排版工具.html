@@ -133,12 +133,15 @@ const GROUPS = [
    {k:"subtitleBold",l:"小标题加粗",t:"bool",d:1},
  ]},
  { title:"章节页（篇章页）", items:[
+   {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题"]},
    {k:"chapterSize",l:"章节名字号",t:"num",d:18,u:"pt",s:0.5,min:6,max:40},
    {k:"chapterTopLines",l:"章节名上方空行",t:"num",d:8,u:"行",s:1,min:0,max:30},
    {k:"chapterRuleW",l:"下划线宽",t:"num",d:4.36,u:"cm",s:0.1,min:0,max:20},
    {k:"chapterRulePt",l:"下划线粗细",t:"num",d:1,u:"pt",s:0.1,min:0,max:5},
    {k:"introSize",l:"引言字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
    {k:"introBoxW",l:"引言框宽",t:"num",d:8.34,u:"cm",s:0.1,min:1,max:20},
+   {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
+   {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
  ]},
  { title:"前言 / 后记", items:[
    {k:"frontSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
@@ -243,6 +246,7 @@ function ptmm(v){ return v*25.4/72; }
 function mmpt(v){ return v*72/25.4; }
 function fontStack(cjk){ return `"Times New Roman","${cjk}",serif`; }
 function hexColor(c){ if(!c) return "#000000"; return /^#/.test(c)?c:"#"+c; }
+function isChap2(){ return String(P.chapterStyle||"").indexOf("版式二")===0; }
 
 /* ==================== .md 解析（移植自 book_layout.py） ==================== */
 const PREFACE_KEYS = ["自序","前言","序言","代序","写在前面"];
@@ -440,6 +444,10 @@ function buildCSS(){
 .chapter-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize}pt; line-height:1.3; }
 .chapter-rule { height:0; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; width:${P.chapterRuleW}cm; margin:8pt auto 0 auto; }
 .chapter-intro { font-family:${fontStack(P.fBody)}; font-size:${P.introSize}pt; width:${P.introBoxW}cm; margin:14pt auto 0 auto; text-align:left; line-height:1.8; }
+.chapter-page.chap2 { text-align:center; }
+.chap2-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize}pt; color:${hexColor(P.bookColor)}; writing-mode:vertical-rl; text-orientation:upright; display:inline-block; line-height:1.15; letter-spacing:3pt; background:#fff; padding:4pt 2pt; margin-top:${mmpt(P.chapter2Top/100*P.pageH - (P.mTop+P.bleed)).toFixed(1)}pt; }
+.pagedjs_right_page .chap2-title, .pagedjs_first_page .chap2-title { transform:translateX(${((P.mRight-P.mLeft)/2).toFixed(2)}mm); }
+.pagedjs_left_page .chap2-title { transform:translateX(${((P.mLeft-P.mRight)/2).toFixed(2)}mm); }
 .front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-title { font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-entry { display:flex; justify-content:space-between; align-items:baseline; line-height:${P.entrySpacing}; margin:0; }
@@ -573,10 +581,15 @@ function renderBook(){
   for(const ch of d.chapters){
     if(ch.title != null){
       const br = firstInBody ? "" : " break-right";
-      let cp = `<div class="chapter-page${br}" data-toc-key="c${chapterIdx}_0"><div style="height:${P.chapterTopLines*P.bodyLine}pt"></div>`;
-      cp += `<div class="chapter-title">${esc(ch.title)}</div><div class="chapter-rule"></div>`;
-      if(ch.intro) cp += `<div style="height:${P.bodyLine}pt"></div><div class="chapter-intro">${esc(ch.intro)}</div>`;
-      cp += `</div>`;
+      let cp;
+      if(isChap2()){
+        cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
+      } else {
+        cp = `<div class="chapter-page${br}" data-toc-key="c${chapterIdx}_0"><div style="height:${P.chapterTopLines*P.bodyLine}pt"></div>`;
+        cp += `<div class="chapter-title">${esc(ch.title)}</div><div class="chapter-rule"></div>`;
+        if(ch.intro) cp += `<div style="height:${P.bodyLine}pt"></div><div class="chapter-intro">${esc(ch.intro)}</div>`;
+        cp += `</div>`;
+      }
       out.push(cp);
       firstInBody = false;
     }
@@ -645,7 +658,16 @@ function decoratePage(pg, i, bodyStart){
   if(P.cropMarks) addCropMarks(sheet);
   const isRight = pageIsRight(pg);
   const isChapter = pg.querySelector(".chapter-page");
-  if(isChapter) sheet.style.background = hexColor(P.bookColor);
+  if(isChapter){
+    if(isChap2()){
+      sheet.style.background = "#ffffff";
+      sheet.style.zIndex = "0";
+      addChap2Frame(sheet);
+      addChap2Ornament(sheet);
+    } else {
+      sheet.style.background = hexColor(P.bookColor);
+    }
+  }
   const art = pg.querySelector(".article");
   if(art){
     const titleEl = pg.querySelector(".article-title");
@@ -663,6 +685,32 @@ function addDeco(sheet, isRight){
   xPt += off; const yPt = P.decoTop + off;
   const d = document.createElement("div");
   d.style.cssText = `position:absolute;left:${ptmm(xPt).toFixed(2)}mm;top:${ptmm(yPt).toFixed(2)}mm;width:${ptmm(P.decoW).toFixed(2)}mm;height:${ptmm(P.decoH).toFixed(2)}mm;background:${hexColor(P.bookColor)};z-index:0;`;
+  sheet.appendChild(d);
+}
+function chap2OrnamentSVG(){
+  const W = P.pageW + 2*P.bleed, H = P.pageH + 2*P.bleed, N = 22;
+  const A = [[0.36,0.045],[0.10,0.20],[0.30,0.345],[0.60,0.335],[0.88,0.40],[0.86,0.70],[0.48,0.955]];
+  const B = [[0.70,0.045],[0.16,0.285],[0.345,0.40],[0.66,0.375],[0.92,0.47],[0.80,0.745],[0.72,0.955]];
+  let paths = "";
+  for(let i=0;i<N;i++){
+    const t = i/(N-1);
+    const pts = A.map((p,j)=>[ (p[0]+(B[j][0]-p[0])*t)*W, (p[1]+(B[j][1]-p[1])*t)*H ]);
+    const f = n=>n.toFixed(1);
+    paths += `<path d="M${f(pts[0][0])} ${f(pts[0][1])} C${f(pts[1][0])} ${f(pts[1][1])} ${f(pts[2][0])} ${f(pts[2][1])} ${f(pts[3][0])} ${f(pts[3][1])} C${f(pts[4][0])} ${f(pts[4][1])} ${f(pts[5][0])} ${f(pts[5][1])} ${f(pts[6][0])} ${f(pts[6][1])}"/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none" fill="none" stroke="#A7A9AB" stroke-width="0.2">${paths}</svg>`;
+}
+function addChap2Frame(sheet){
+  const inset = P.bleed + P.chapter2Inset;
+  const w = P.pageW + 2*P.bleed - 2*inset, h = P.pageH + 2*P.bleed - 2*inset;
+  const d = document.createElement("div");
+  d.style.cssText = `position:absolute;left:${inset}mm;top:${inset}mm;width:${w}mm;height:${h}mm;border:0.6pt solid ${hexColor(P.bookColor)};z-index:-1;pointer-events:none;`;
+  sheet.appendChild(d);
+}
+function addChap2Ornament(sheet){
+  const d = document.createElement("div");
+  d.style.cssText = `position:absolute;left:0;top:0;width:${P.pageW + 2*P.bleed}mm;height:${P.pageH + 2*P.bleed}mm;z-index:-1;pointer-events:none;`;
+  d.innerHTML = chap2OrnamentSVG();
   sheet.appendChild(d);
 }
 function addHeader(sheet, isRight, name, num){
