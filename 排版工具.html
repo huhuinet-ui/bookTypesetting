@@ -48,6 +48,8 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
   #pages .pagedjs_pages { zoom:1 !important; margin:0 !important; }
   .pagedjs_page { box-shadow:none !important; margin:0 !important; }
 </style>
+<script src="vendor/html-to-image-1.11.13.js" data-pagedjs-ignore></script>
+<script src="vendor/pdf-lib-1.17.1.min.js" data-pagedjs-ignore></script>
 </head>
 <body>
 <div id="toolbar">
@@ -55,7 +57,7 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
   <button id="pickFolder">选择书籍文件夹</button>
   <span id="srcInfo">未选择文件</span>
   <button id="exportPdf" class="primary" disabled>导出 PDF</button>
-  <span class="hint">导出后选「另存为 PDF」，边距设「无」</span>
+  <span class="hint">直接下载 PDF · 300 dpi（图像型）</span>
   <span style="flex:1"></span>
   <div id="zoomGroup">
     缩放 <button id="zoomOut">−</button><span id="zoomVal">100%</span><button id="zoomIn">+</button>
@@ -133,13 +135,14 @@ const GROUPS = [
    {k:"subtitleBold",l:"小标题加粗",t:"bool",d:1},
  ]},
  { title:"章节页（篇章页）", items:[
-   {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题"]},
+   {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题","版式四：玫瑰线描+竖排引言","版式五：纸飞机线描+竖排引言"]},
    {k:"chapterSize",l:"章节名字号",t:"num",d:18,u:"pt",s:0.5,min:6,max:40},
    {k:"chapterTopLines",l:"章节名上方空行",t:"num",d:8,u:"行",s:1,min:0,max:30},
    {k:"chapterRuleW",l:"下划线宽",t:"num",d:4.36,u:"cm",s:0.1,min:0,max:20},
    {k:"chapterRulePt",l:"下划线粗细",t:"num",d:1,u:"pt",s:0.1,min:0,max:5},
    {k:"introSize",l:"引言字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
    {k:"introBoxW",l:"引言框宽",t:"num",d:8.34,u:"cm",s:0.1,min:1,max:20},
+   {k:"chapter4Bg",l:"版式四/五·底色",t:"color",d:"#DFE9C9"},
    {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
  ]},
@@ -172,6 +175,7 @@ const GROUPS = [
    {k:"pad",l:"页码补零位数",t:"num",d:2,u:"位",s:1,min:1,max:4},
  ]},
  { title:"目录", items:[
+   {k:"tocStyle",l:"目录版式",t:"select",d:"版式一：简洁目录",opts:["版式一：简洁目录","版式二：分章序号+作者页码"]},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
    {k:"tocEntrySize",l:"条目字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
@@ -246,6 +250,9 @@ function ptmm(v){ return v*25.4/72; }
 function mmpt(v){ return v*72/25.4; }
 function fontStack(cjk){ return `"Times New Roman","${cjk}",serif`; }
 function hexColor(c){ if(!c) return "#000000"; return /^#/.test(c)?c:"#"+c; }
+function isReferenceToc(){ return String(P.tocStyle||"").startsWith("版式二"); }
+function isChap5(){ return String(P.chapterStyle||"").indexOf("版式五")===0; }
+function isChap4(){ return String(P.chapterStyle||"").indexOf("版式四")===0; }
 function isChap2(){ return String(P.chapterStyle||"").indexOf("版式二")===0; }
 
 /* ==================== .md 解析（移植自 book_layout.py） ==================== */
@@ -256,18 +263,43 @@ const END_PUNCT = "。！？!?；;：:…，,、～~”」』）)";
 const SUB_RE = /^#####\s*(?:小标题\s*[:：]?\s*)?(.+)$/;
 const IMG_RE = /^图片\s*[:：]\s*(.+)$/;
 const CAP_RE = /^图片名\s*[:：]\s*(.+)$/;
-const MD_IMG_RE = /^!\s*\[([^\]]*)\]\s*\(([^)]+)\)/;
+const MD_IMG_RE = /^!\s*\[([^\]]*)\]\s*\((.+)\)\s*$/;
 
 function cleanLine(s){
   s = s.replace(/~~.*?~~/g,"");
   for(const n of NOTES) s = s.split(n).join("");
   return s.trim();
 }
+function normalizeBookPath(path){
+  const segments=[];
+  for(const part of String(path).replace(/\\/g,"/").normalize("NFC").split("/")){
+    if(!part || part===".") continue;
+    if(part==="..") { if(segments.length && segments[segments.length-1]!=="..") segments.pop(); else segments.push(part); }
+    else segments.push(part);
+  }
+  return segments.join("/");
+}
 function resolveImgPath(path){
-  const p = path.replace(/\\/g,"/").replace(/^\.\//,"");
-  let f = folderFiles.get(p);
-  if(!f){ const lp = p.toLowerCase(); for(const [k,v] of folderFiles){ if(k.toLowerCase()===lp){ f=v; break; } } }
-  return f || null;
+  let ref=String(path).trim();
+  // Markdown destinations may contain an optional title or angle brackets.
+  ref=ref.replace(/\s+["'][^"']*["']\s*$/,"").trim();
+  if((ref.startsWith("<") && ref.endsWith(">")) || (ref.startsWith('"') && ref.endsWith('"')) || (ref.startsWith("'") && ref.endsWith("'"))) ref=ref.slice(1,-1);
+  const variants=[ref];
+  try { const decoded=decodeURIComponent(ref); if(decoded!==ref) variants.push(decoded); } catch(e) { /* Literal percent signs are valid filenames. */ }
+  const mdDir=markdownRelPath.slice(0,markdownRelPath.lastIndexOf("/")+1);
+  const root=markdownRelPath.includes("/")?markdownRelPath.split("/")[0]+"/":"";
+  const candidates=[];
+  for(const value of variants){
+    candidates.push(normalizeBookPath(mdDir+value),normalizeBookPath(value));
+    if(root) candidates.push(normalizeBookPath(root+value));
+  }
+  for(const candidate of [...new Set(candidates)]){
+    // Preserve exact matches; never guess by basename when folders contain duplicates.
+    for(const [key,file] of folderFiles) if(normalizeBookPath(key)===candidate) return file;
+    const matches=[...folderFiles].filter(([key])=>normalizeBookPath(key).toLowerCase()===candidate.toLowerCase());
+    if(matches.length===1) return matches[0][1];
+  }
+  return null;
 }
 function classify(lines, poem){
   if(poem) return classifyPoem(lines);
@@ -334,9 +366,20 @@ function parseBook(srcText){
     }
     if(s.startsWith("###") && !s.startsWith("####")){
       const title = s.replace(/^#+\s*/,"").trim();
-      let intro=null; let j=i+1;
-      while(j<n && !raw[j].trim()) j++;
-      if(j<n && raw[j].trim().startsWith("简介")){ intro = raw[j].trim().replace(/^简介\s*[:：]?\s*/,"").trim(); j++; }
+      // Everything between the chapter heading and the next heading belongs
+      // to its introduction. Support labels, plain paragraphs and blockquotes.
+      let j=i+1;
+      const introLines=[];
+      while(j<n && !/^#{1,6}(?:\s|$)/.test(raw[j].trim())){
+        introLines.push(raw[j].trim().replace(/^(?:>\s*)+/,""));
+        j++;
+      }
+      while(introLines.length && !introLines[0]) introLines.shift();
+      while(introLines.length && !introLines[introLines.length-1]) introLines.pop();
+      if(introLines.length){
+        introLines[0]=introLines[0].replace(/^(?:\*\*|__)?(?:章节引言|章节简介|简介|引言|导语)(?:\*\*|__)?\s*[:：]?\s*(?:\*\*|__)?\s*/,"");
+      }
+      const intro=introLines.join("\n").trim() || null;
       chapters.push({title, intro, articles:[]}); i=j; continue;
     }
     if(s.startsWith("####")){
@@ -363,12 +406,14 @@ function parseBook(srcText){
 }
 
 /* ==================== 文件与图片 ==================== */
+let markdownRelPath = "";
 let folderFiles = new Map();
 let imgInfo = new Map();
 let parsedData = null;
 
 function loadFolder(fileList){
-  folderFiles = new Map(); imgInfo = new Map();
+  for(const info of imgInfo.values()) if(info) URL.revokeObjectURL(info.url);
+  folderFiles = new Map(); imgInfo = new Map(); markdownRelPath = "";
   const files = Array.from(fileList);
   const mds = [];
   for(const f of files){
@@ -379,6 +424,7 @@ function loadFolder(fileList){
   if(!mds.length){ alert("该文件夹里没有 .md 文件"); return; }
   mds.sort();
   const mdRel = mds[0];
+  markdownRelPath = mdRel;
   const mdFile = folderFiles.get(mdRel);
   BOOK_NAME = mdRel.split("/").pop().replace(/\.md$/i,"");
   const reader = new FileReader();
@@ -395,7 +441,7 @@ function loadImage(file){
     const url = URL.createObjectURL(file);
     const im = new Image();
     im.onload = ()=>res({url, w:im.naturalWidth, h:im.naturalHeight});
-    im.onerror = rej;
+    im.onerror = e=>{ URL.revokeObjectURL(url); rej(e); };
     im.src = url;
   });
 }
@@ -425,6 +471,10 @@ function buildCSS(){
 @page { size: ${W}mm ${H}mm; margin: 0; }
 @page :left { margin: ${t}mm ${inner}mm ${b}mm ${outer}mm; }
 @page :right { margin: ${t}mm ${outer}mm ${b}mm ${inner}mm; }
+@page toc-reference { margin:${P.bleed+P.pageH*.12}mm ${P.bleed+P.pageW*.15}mm ${P.bleed+P.pageH*.11}mm ${P.bleed+P.pageW*.18}mm; }
+@page toc-reference:left { margin:${P.bleed+P.pageH*.12}mm ${P.bleed+P.pageW*.18}mm ${P.bleed+P.pageH*.11}mm ${P.bleed+P.pageW*.15}mm; }
+@page toc-reference:right { margin:${P.bleed+P.pageH*.12}mm ${P.bleed+P.pageW*.15}mm ${P.bleed+P.pageH*.11}mm ${P.bleed+P.pageW*.18}mm; }
+.toc-reference-wrap { page:toc-reference; }
 .break-page { break-before: page; }
 .break-right { break-before: right; }
 .body,.article,.chapter-page,.front-page,.toc { font-family: ${fontStack(P.fBody)}; font-size: ${P.bodySize}pt; color:#000; }
@@ -448,11 +498,28 @@ function buildCSS(){
 .chap2-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize}pt; color:${hexColor(P.bookColor)}; writing-mode:vertical-rl; text-orientation:upright; display:inline-block; line-height:1.15; letter-spacing:3pt; background:#fff; padding:4pt 2pt; margin-top:${mmpt(P.chapter2Top/100*P.pageH - (P.mTop+P.bleed)).toFixed(1)}pt; }
 .pagedjs_right_page .chap2-title, .pagedjs_first_page .chap2-title { transform:translateX(${((P.mRight-P.mLeft)/2).toFixed(2)}mm); }
 .pagedjs_left_page .chap2-title { transform:translateX(${((P.mLeft-P.mRight)/2).toFixed(2)}mm); }
+.chapter-page.chap4 { min-height:1pt; }
+.chap4-layout { position:absolute; inset:0; color:#20251c; pointer-events:none; }
+.chap4-number { white-space:nowrap; position:absolute; right:18%; top:20%; font-family:${fontStack(P.fTitle)}; font-size:${Math.max(10,P.chapterSize*.55)}pt; font-weight:bold; }
+.chap4-heading { position:absolute; right:18%; top:29%; max-width:66%; text-align:right; }
+.chap4-title { display:inline-block; font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize*1.2}pt; line-height:1.4; overflow-wrap:anywhere; text-align:left; padding-bottom:5pt; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; }
+.chap4-rose { position:absolute; right:17%; top:43%; width:13%; height:9%; }
+.chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fBody)}; font-size:${P.introSize}pt; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:anywhere; }
 .front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-title { font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-entry { display:flex; justify-content:space-between; align-items:baseline; line-height:${P.entrySpacing}; margin:0; }
 .toc-entry .toc-text { white-space:pre-wrap; }
 .toc-entry .toc-num { white-space:nowrap; }
+.toc-reference { width:100%; padding:2mm 0; }
+.toc-reference .toc-title { text-align:right; margin:8mm 0 21mm; font-weight:normal; line-height:1.25; break-inside:avoid; break-after:avoid; }
+.toc-reference .toc-english { display:block; font-family:"Times New Roman",serif; font-size:.85em; letter-spacing:.4pt; }
+.toc-reference .toc-section-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterTocSize}pt; font-weight:${P.chapterTocBold?"bold":"normal"}; line-height:1.4; margin:20pt 0 17pt; break-after:avoid; break-inside:avoid; }
+.toc-reference .toc-reference-row { display:flex; align-items:baseline; gap:8pt; font-size:${P.tocEntrySize}pt; line-height:${P.entrySpacing}; margin:0 0 3pt; break-inside:avoid; }
+.toc-reference .toc-sequence { flex:0 0 16pt; font-family:"Times New Roman",serif; font-size:.85em; font-style:italic; font-weight:bold; color:#555; }
+.toc-reference .toc-article-name { flex:1; min-width:0; overflow-wrap:anywhere; }
+.toc-reference .toc-meta { flex:0 0 34%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:.9em; }
+.toc-reference .toc-num { display:inline-block; min-width:3ch; font-family:"Times New Roman",serif; font-variant-numeric:tabular-nums; }
+.toc-reference .toc-front-entry { font-size:${P.chapterTocSize}pt; margin-bottom:12pt; }
 .poem-title { font-family:${fontStack(P.fTitle)}; font-size:${P.poemTitleSize}pt; text-align:center; margin:0 0 ${P.poemTitleAfter}pt 0; }
 .poem-meta { font-size:${P.poemMetaSize}pt; text-align:center; margin:0 0 ${P.poemMetaAfter}pt 0; }
 .poem-line { font-size:${P.poemLineSize}pt; text-align:center; line-height:${P.poemLine}pt; margin:0; }
@@ -556,6 +623,18 @@ function renderTocEntry(text, key, size, bold, indentPt){
   else if(leader==="短横线") fill = `<span style="flex:1;border-bottom:1px dashed #888;margin:0 6pt;position:relative;top:-2pt;"></span>`;
   return `<div class="toc-entry" style="${style}"><span class="toc-text">${esc(text)}</span>${fill}<span class="toc-num"${ref}>${num}</span></div>`;
 }
+function renderReferenceToc(data){
+  let html=`<div class="toc toc-reference"><div class="toc-title">${esc(P.tocTitle)}<span class="toc-english">Content</span></div>`;
+  if(data.prefaceTitle) html+=`<div class="toc-front-entry">${esc(data.prefaceTitle)}</div>`;
+  data.chapters.forEach((chapter,ci)=>{
+    if(chapter.title!=null) html+=`<div class="toc-section-title">${esc(chapter.title)}</div>`;
+    chapter.articles.forEach((article,ai)=>{
+      const digits=Math.max(3,Number(P.pad)||0),key=`a${ci}_${ai}`;
+      html+=`<div class="toc-reference-row"><span class="toc-sequence">${String(ai+1).padStart(2,"0")}</span><span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?`${esc(article.author)} / `:""}<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></span></div>`;
+    });
+  });
+  return html+"</div>";
+}
 function renderBook(){
   const d = parsedData;
   const out = []; let firstEl = true;
@@ -563,7 +642,11 @@ function renderBook(){
     out.push(`<div class="front-wrap${firstEl?"":" break-page"}">` + renderFront(d.prefaceTitle, d.preface, "preface") + `</div>`);
     firstEl = false;
   }
-  let tocHtml = `<div class="toc-wrap${firstEl?"":" break-page"}"><div class="toc">`;
+  let tocHtml;
+  if(isReferenceToc()){
+    tocHtml=`<div class="toc-wrap toc-reference-wrap${firstEl?"":" break-page"}">${renderReferenceToc(d)}</div>`;
+  } else {
+  tocHtml = `<div class="toc-wrap${firstEl?"":" break-page"}"><div class="toc">`;
   tocHtml += `<div class="toc-title">${esc(P.tocTitle)}</div>`;
   if(d.prefaceTitle) tocHtml += renderTocEntry(d.prefaceTitle, null, P.chapterTocSize, P.chapterTocBold, 0);
   let tci = 0;
@@ -573,6 +656,7 @@ function renderBook(){
     tci++;
   }
   tocHtml += `</div></div>`;
+  }
   out.push(tocHtml);
   firstEl = false;
   out.push(`<div class="body break-right">`);
@@ -582,7 +666,14 @@ function renderBook(){
     if(ch.title != null){
       const br = firstInBody ? "" : " break-right";
       let cp;
-      if(isChap2()){
+      if(isChap4() || isChap5()){
+        const ordinal=d.chapters.slice(0,chapterIdx+1).filter(c=>c.title!=null).length;
+        const match=String(ch.title).match(/^(第[一二三四五六七八九十百零〇两\d]+[章篇部卷])(?:[\s　:：、.．—-]*)(.*)$/);
+        const digits="零一二三四五六七八九";
+        const n=ordinal<10?digits[ordinal]:ordinal<100?((ordinal<20?"":digits[Math.floor(ordinal/10)])+"十"+(ordinal%10?digits[ordinal%10]:"")):String(ordinal);
+        const number=match?match[1]:"第"+n+"章", title=match&&match[2]?match[2]:ch.title;
+        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout"><div class="chap4-number">${esc(number)}</div><div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${esc(ch.intro)}</div>`:""}</div></div>`;
+      } else if(isChap2()){
         cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
       } else {
         cp = `<div class="chapter-page${br}" data-toc-key="c${chapterIdx}_0"><div style="height:${P.chapterTopLines*P.bodyLine}pt"></div>`;
@@ -613,7 +704,12 @@ function renderBook(){
 const pagesEl = document.getElementById("pages");
 const bookContent = document.getElementById("bookContent");
 
-async function renderAll(){
+let renderTask=Promise.resolve();
+function renderAll(){
+  renderTask=renderTask.catch(()=>{}).then(()=>renderBookPreview());
+  return renderTask;
+}
+async function renderBookPreview(){
   if(!parsedData) return;
   document.getElementById("statusBar").style.display = "flex";
   document.getElementById("stInfo").textContent = "排版中…";
@@ -623,6 +719,7 @@ async function renderAll(){
   st.textContent = buildCSS();
   bookContent.innerHTML = renderBook();
   pagesEl.innerHTML = "";
+  pagesEl.style.setProperty("--zoom", "1");
   try {
     const pv = new Paged.Previewer();
     await pv.preview(bookContent.content, undefined, pagesEl);
@@ -630,6 +727,8 @@ async function renderAll(){
     console.error(e);
     document.getElementById("stInfo").textContent = "排版出错：" + e.message;
     return;
+  } finally {
+    applyZoom();
   }
   postProcess();
 }
@@ -645,7 +744,7 @@ function postProcess(){
   });
   pagesEl.querySelectorAll(".toc-num[data-toc-ref]").forEach(el=>{
     const n = titlePage[el.getAttribute("data-toc-ref")];
-    el.textContent = n ? String(n).padStart(P.pad,"0") : "";
+    el.textContent = n ? String(n).padStart(Number(el.dataset.tocPad)||P.pad,"0") : "";
   });
   pages.forEach((pg,i)=> decoratePage(pg, i, bodyStart));
   document.getElementById("stInfo").textContent = `共 ${pages.length} 页 · 正文从第 ${Math.max(0,bodyStart+1)} 页起`;
@@ -657,9 +756,27 @@ function decoratePage(pg, i, bodyStart){
   if(!sheet) return;
   if(P.cropMarks) addCropMarks(sheet);
   const isRight = pageIsRight(pg);
+  if(isReferenceToc() && pg.querySelector(".toc-reference")){
+    const frame=document.createElement("div");
+    frame.style.cssText=`position:absolute;inset:${P.bleed+Math.min(13,P.pageW*.075,P.pageH*.075)}mm;border:.45pt solid #333;pointer-events:none;z-index:0;`;
+    sheet.appendChild(frame);
+  }
   const isChapter = pg.querySelector(".chapter-page");
   if(isChapter){
-    if(isChap2()){
+    if(isChap4() || isChap5()){
+      sheet.style.background=hexColor(P.chapter4Bg||"#DFE9C9");
+      const layout=pg.querySelector(".chap4-layout");
+      if(layout){
+        sheet.appendChild(layout);
+        const intro=layout.querySelector(".chap4-intro");
+        if(intro){
+          let size=Number(P.introSize);
+          while(size>6 && (intro.scrollWidth>intro.clientWidth+1 || intro.scrollHeight>intro.clientHeight+1)){
+            size-=.5; intro.style.fontSize=size+"pt";
+          }
+        }
+      }
+    } else if(isChap2()){
       sheet.style.background = "#ffffff";
       sheet.style.zIndex = "0";
       addChap2Frame(sheet);
@@ -687,18 +804,36 @@ function addDeco(sheet, isRight){
   d.style.cssText = `position:absolute;left:${ptmm(xPt).toFixed(2)}mm;top:${ptmm(yPt).toFixed(2)}mm;width:${ptmm(P.decoW).toFixed(2)}mm;height:${ptmm(P.decoH).toFixed(2)}mm;background:${hexColor(P.bookColor)};z-index:0;`;
   sheet.appendChild(d);
 }
+// Same chapter layout and ornament box as style four; only the drawing changes.
+function chap5PlaneSVG(){
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 150" width="100%" height="100%" fill="none" stroke="#303b29" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 57 L108 22 L80 104 L53 76 L33 93 L35 68 Z"/>
+    <path d="M35 68 L108 22 L53 76 M33 93 L47 70 M53 76 L80 104"/>
+    <path d="M23 109 C2 118 16 143 36 132 C55 121 39 104 29 116 C20 127 43 145 64 137" stroke-dasharray="3 4"/>
+  </svg>`;
+}
+// Original vector rose for the quiet chapter divider.
+function chap4RoseSVG(){
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 150" width="100%" height="100%" fill="none" stroke="#303b29" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M63 85 C59 106 69 119 59 146 M63 119 Q77 107 79 97 Q64 101 63 115 M63 131 Q50 122 49 111 Q62 116 63 131"/>
+  <path d="M23 43 Q13 28 30 24 Q31 11 48 15 Q60 1 73 13 Q91 8 95 26 Q113 30 101 47 Q116 63 95 76 Q87 92 65 96 Q55 87 43 85 Q23 80 22 66 Q6 56 23 43Z"/>
+  <path d="M23 43 Q36 34 51 43 Q60 48 82 40 L99 29 M22 66 Q40 67 54 77 Q77 80 95 61 L101 47 M43 85 Q60 70 63 65 M30 24 Q35 43 51 43 M48 15 Q43 22 43 32 M73 13 Q84 21 82 40 M95 26 Q92 42 86 49"/>
+  <path d="M32 48 Q29 63 54 66 Q74 65 87 51 Q64 54 59 47 Q46 37 32 48Z M36 53 Q47 49 59 55 Q69 59 80 54 M54 66 Q48 73 41 73 M59 47 Q68 40 76 30 Q69 18 55 23 Q43 25 43 32 Q54 31 59 39Z M43 32 Q51 42 59 39 Q67 35 68 29 Q59 26 54 31 Q52 35 59 35 M76 30 L82 40 M23 43 L20 54"/>
+  </svg>`;
+}
 function chap2OrnamentSVG(){
-  const W = P.pageW + 2*P.bleed, H = P.pageH + 2*P.bleed, N = 22;
-  const A = [[0.36,0.045],[0.10,0.20],[0.30,0.345],[0.60,0.335],[0.88,0.40],[0.86,0.70],[0.48,0.955]];
-  const B = [[0.70,0.045],[0.16,0.285],[0.345,0.40],[0.66,0.375],[0.92,0.47],[0.80,0.745],[0.72,0.955]];
-  let paths = "";
-  for(let i=0;i<N;i++){
-    const t = i/(N-1);
-    const pts = A.map((p,j)=>[ (p[0]+(B[j][0]-p[0])*t)*W, (p[1]+(B[j][1]-p[1])*t)*H ]);
-    const f = n=>n.toFixed(1);
-    paths += `<path d="M${f(pts[0][0])} ${f(pts[0][1])} C${f(pts[1][0])} ${f(pts[1][1])} ${f(pts[2][0])} ${f(pts[2][1])} ${f(pts[3][0])} ${f(pts[3][1])} C${f(pts[4][0])} ${f(pts[4][1])} ${f(pts[5][0])} ${f(pts[5][1])} ${f(pts[6][0])} ${f(pts[6][1])}"/>`;
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none" fill="none" stroke="#A7A9AB" stroke-width="0.2">${paths}</svg>`;
+  // Reference chapter ornament: 21 independent cubic splines. Keep each curve's
+  // control points: interpolating only two edges loses the twisted line bundles.
+  // Coordinates are normalized to the reference page; SVG stays vector in print.
+  const curves = [[["M",0.8127666,0.0147458],["C",0.8127666,0.0147458,-0.0906299,0.2327656,0.1483019,0.3488654],["C",0.2982326,0.4217186,0.8435636,0.2545377,0.8723985,0.3689633],["C",0.9303263,0.5988266,0.5435722,0.926354,0.792322,0.983818]],[["M",0.7922364,0.0147458],["C",0.7922364,0.0147458,-0.0805407,0.2317342,0.152561,0.3425857],["C",0.3010352,0.4131921,0.8230601,0.2575587,0.8640484,0.381336],["C",0.9403784,0.611824,0.528835,0.9263854,0.7775848,0.9838493]],[["M",0.7717062,0.0147458],["C",0.7717062,0.0147458,-0.0704102,0.2306758,0.1568202,0.3363044],["C",0.3038585,0.4046552,0.8020348,0.2604183,0.8557004,0.3937071],["C",0.9487368,0.6247722,0.5140977,0.9264168,0.7628455,0.9838807]],[["M",0.7511759,0.0147458],["C",0.7511759,0.0147458,-0.0602363,0.2295876,0.1610793,0.3300247],["C",0.3067044,0.3961108,0.7805101,0.2632151,0.8473544,0.4060812],["C",0.9557542,0.6377727,0.4993605,0.9264482,0.7481103,0.9839136]],[["M",0.7306457,0.0147458],["C",0.7306457,0.0147458,-0.0500192,0.228465,0.1653405,0.3237435],["C",0.309571,0.3875559,0.7585255,0.2660209,0.8390043,0.4184539],["C",0.9617236,0.6508852,0.4846232,0.9264796,0.7333709,0.983945]],[["M",0.7101154,0.0147458],["C",0.7101154,0.0147458,-0.0397566,0.227308,0.1695975,0.3174637],["C",0.3124644,0.3789861,0.7361096,0.2688835,0.8306562,0.430825],["C",0.9668739,0.6641428,0.469886,0.926511,0.7186337,0.9839749]],[["M",0.689585,0.0147458],["C",0.689585,0.0147458,-0.0294489,0.2261121,0.1738585,0.3111825],["C",0.3153803,0.3704013,0.7133037,0.2718358,0.822308,0.4431977],["C",0.9713825,0.6775558,0.4551485,0.9265424,0.7038962,0.9840063]],[["M",0.6690548,0.0147458],["C",0.6690548,0.0147458,-0.0190935,0.2248774,0.1781177,0.3049027],["C",0.3183232,0.3617971,0.6901451,0.2749016,0.8139599,0.4555703],["C",0.9753899,0.6911273,0.4404112,0.9265737,0.689159,0.9840392]],[["M",0.6485245,0.0147458],["C",0.6485245,0.0147458,-0.0086887,0.2235964,0.1823768,0.2986215],["C",0.321295,0.3531705,0.6666627,0.2780931,0.8056098,0.4679429],["C",0.9790033,0.7048573,0.425674,0.9266051,0.6744217,0.9840706]],[["M",0.6279943,0.0147458],["C",0.6279943,0.0147458,0.0017616,0.2222675,0.1866359,0.2923402],["C",0.3242957,0.34452,0.6428914,0.2814206,0.7972617,0.4803156],["C",0.9823114,0.7187352,0.4109347,0.9266365,0.6596845,0.9841005]],[["M",0.607464,0.0147458],["C",0.607464,0.0147458,0.0122635,0.2208877,0.190895,0.2860605],["C",0.3273294,0.3358381,0.6188561,0.2848871,0.7889158,0.4926882],["C",0.9853781,0.7327551,0.3961974,0.9266679,0.6449472,0.9841319]],[["M",0.5869336,0.0147458],["C",0.5869336,0.0147458,0.0228105,0.2194512,0.1951539,0.2797807],["C",0.3303938,0.3271218,0.5945874,0.2884926,0.7805654,0.5050594],["C",0.9882548,0.7469096,0.38146,0.9266993,0.6302098,0.9841648]],[["M",0.5664036,0.0147458],["C",0.5664036,0.0147458,0.0334075,0.2179534,0.1994153,0.2734995],["C",0.3334916,0.3183621,0.5701067,0.2922386,0.7722176,0.517432],["C",0.9909854,0.7611866,0.3667229,0.9267307,0.6154727,0.9841961]],[["M",0.5458731,0.0147458],["C",0.5458731,0.0147458,0.0440494,0.2163928,0.2036743,0.2672198],["C",0.3366241,0.3095531,0.5454316,0.2961191,0.7638673,0.5298062],["C",0.9936042,0.7755803,0.3519855,0.9267621,0.6007332,0.9842275]],[["M",0.5253429,0.0147458],["C",0.5253429,0.0147458,0.0547307,0.2147605,0.2079334,0.2609385],["C",0.339794,0.3006858,0.5205917,0.3001298,0.7555213,0.5421773],["C",0.9961324,0.7900801,0.3372482,0.9267935,0.5859959,0.9842574]],[["M",0.5048126,0.0147458],["C",0.5048126,0.0147458,0.0654533,0.2130504,0.2121925,0.2546588],["C",0.3429968,0.2917483,0.4955971,0.3042704,0.7471712,0.5545499],["C",0.9985947,0.80468,0.322511,0.9268249,0.5712587,0.9842888]],[["M",0.4842824,0.0147458],["C",0.4842824,0.0147458,0.0762089,0.2112611,0.2164516,0.2483775],["C",0.3462368,0.2827285,0.4704663,0.3085292,0.7388231,0.5669226],["C",1.0010094,0.8193726,0.3077737,0.9268563,0.5565214,0.9843217]],[["M",0.4637522,0.0147458],["C",0.4637522,0.0147458,0.0869872,0.2093821,0.2207108,0.2420978],["C",0.3495098,0.2736071,0.4452117,0.312906,0.7304751,0.5792952],["C",1.0033871,0.8341504,0.2930364,0.9268877,0.5417842,0.9843531]],[["M",0.4432217,0.0147458],["C",0.4432217,0.0147458,0.0977777,0.2074104,0.2249717,0.2358165],["C",0.3528115,0.2643691,0.4198496,0.317392,0.7221268,0.5916679],["C",1.0057398,0.8490074,0.278299,0.9269191,0.5270467,0.984383]],[["M",0.4226915,0.0147458],["C",0.4226915,0.0147458,0.1085663,0.2053386,0.2292288,0.2295368],["C",0.3561381,0.2549876,0.3943888,0.3219826,0.7137788,0.6040405],["C",1.0080761,0.8639377,0.2635617,0.9269504,0.5123095,0.9844144]],[["M",0.4021614,0.0147458],["C",0.4021614,0.0147458,0.1193386,0.2031592,0.2334902,0.223257],["C",0.3594774,0.2454387,0.3688394,0.3266733,0.7054289,0.6164117],["C",1.0104024,0.8789353,0.2488226,0.9269818,0.4975724,0.9844473]]];
+  const W = P.pageW + 2*P.bleed, H = P.pageH + 2*P.bleed;
+  const paths = curves.map(curve => {
+    const d = curve.map(([op,...xy]) => op + xy.map((n,i) =>
+      (n * (i%2 ? H : W)).toFixed(4)).join(" ")).join(" ");
+    return `<path d="${d}"/>`;
+  }).join("");
+  // Match the original artwork's top/bottom clipping and fine neutral gray ink.
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none" fill="none" stroke="#A0A0A0" stroke-width="${(0.469/484.724*W).toFixed(4)}"><svg x="0" y="${H*28.346/668.976}" width="${W}" height="${H*612.284/668.976}" viewBox="0 ${H*28.346/668.976} ${W} ${H*612.284/668.976}" overflow="hidden">${paths}</svg></svg>`;
 }
 function addChap2Frame(sheet){
   const inset = P.bleed + P.chapter2Inset;
@@ -722,8 +857,8 @@ function addHeader(sheet, isRight, name, num){
   const d = document.createElement("div");
   d.className = "pagehdr";
   d.style.cssText = `position:absolute;top:${top}mm;${side};text-align:${align};z-index:10;`;
-  d.innerHTML = `<div style="font-family:${fontStack(P.fHead)};font-size:${P.headSize}pt;line-height:1.2;">${esc(name)}</div>` +
-    (pad ? `<div style="font-family:${fontStack(P.fNum)};font-size:${P.numSize}pt;text-decoration:underline;line-height:1.2;">${pad}</div>` : "");
+  d.innerHTML = `<div style="font-family:${escAttr(fontStack(P.fHead))};font-size:${P.headSize}pt;line-height:1.2;">${esc(name)}</div>` +
+    (pad ? `<div style="font-family:${escAttr(fontStack(P.fNum))};font-size:${P.numSize}pt;text-decoration:underline;line-height:1.2;">${pad}</div>` : "");
   sheet.appendChild(d);
 }
 function addCropMarks(sheet){
@@ -750,6 +885,72 @@ function appendRect(sheet, [x,y,w,h], color){
   sheet.appendChild(d);
 }
 
+/* ==================== 直接下载 PDF ==================== */
+let exportingPDF=false;
+async function exportPDF(){
+  if(exportingPDF || !parsedData) return;
+  exportingPDF=true;
+  const button=document.getElementById("exportPdf");
+  const controls=[...document.querySelectorAll("#toolbar button, #panel input, #panel select, #fileInput")];
+  const previous=controls.map(el=>el.disabled);
+  const oldLabel=button.textContent;
+  controls.forEach(el=>el.disabled=true);
+  let downloadURL=null, exportPage=0;
+  try{
+    if(!window.htmlToImage || !window.PDFLib) throw new Error("导出依赖未找到，请将 vendor 文件夹与排版工具放在同一目录。");
+    // Finish pending edits before taking a fixed snapshot of all paginated sheets.
+    if(renderTimer){clearTimeout(renderTimer);renderTimer=null;}
+    await renderAll();
+    if(document.getElementById("stInfo").textContent.startsWith("排版出错")) throw new Error(document.getElementById("stInfo").textContent);
+    await document.fonts.ready;
+    pagesEl.style.setProperty("--zoom", "1");
+    const sheets=[...pagesEl.querySelectorAll(".pagedjs_sheet")];
+    if(!sheets.length) throw new Error("没有可导出的页面，请先导入书稿。");
+    const widthPt=(Number(P.pageW)+2*Number(P.bleed))*72/25.4;
+    const heightPt=(Number(P.pageH)+2*Number(P.bleed))*72/25.4;
+    const pdf=await PDFLib.PDFDocument.create();
+    pdf.setTitle(BOOK_NAME || "书稿");
+    pdf.setCreator("图书排版工具");
+    for(let i=0;i<sheets.length;i++){
+      exportPage=i+1;
+      button.textContent=`导出中 ${i+1}/${sheets.length}`;
+      document.getElementById("stInfo").textContent=`正在生成 PDF：${i+1} / ${sheets.length} 页`;
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      const sheet=sheets[i];
+      await Promise.all([...sheet.querySelectorAll("img")].map(im=>im.decode()));
+      // Export each sheet separately; UI scroll position and preview zoom do not
+      // change its physical dimensions. Sequential canvases limit peak memory.
+      const canvas=await htmlToImage.toCanvas(sheet,{
+        width:sheet.offsetWidth,height:sheet.offsetHeight,pixelRatio:300/96,
+        backgroundColor:getComputedStyle(sheet).backgroundColor,skipFonts:true,
+        style:{margin:"0",transform:"none",zoom:"1",boxShadow:"none",isolation:"isolate",position:"relative",zIndex:"0"}
+      });
+      const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("页面图像生成失败")),"image/png"));
+      const image=await pdf.embedPng(await blob.arrayBuffer());
+      pdf.addPage([widthPt,heightPt]).drawImage(image,{x:0,y:0,width:widthPt,height:heightPt});
+      canvas.width=canvas.height=1;
+    }
+    const bytes=await pdf.save();
+    downloadURL=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+    const link=document.createElement("a");
+    link.href=downloadURL;
+    link.download=(BOOK_NAME || "书稿").replace(/[\\/:*?"<>|]/g,"_")+".pdf";
+    document.body.appendChild(link);link.click();link.remove();
+    document.getElementById("stInfo").textContent=`PDF 已生成，共 ${sheets.length} 页，请在浏览器下载中查看`;
+  }catch(error){
+    console.error("PDF export failed",error);
+    const reason=error.message || `第 ${exportPage} 页图像生成失败，请检查该页图片或字体。`;
+    document.getElementById("stInfo").textContent="PDF 导出失败："+reason;
+    alert("PDF 导出失败："+reason);
+  }finally{
+    if(downloadURL) setTimeout(()=>URL.revokeObjectURL(downloadURL),60000);
+    controls.forEach((el,i)=>el.disabled=previous[i]);
+    button.textContent=oldLabel;
+    applyZoom();
+    exportingPDF=false;
+  }
+}
+
 /* ==================== 交互 ==================== */
 let renderTimer = null;
 function scheduleRender(){ if(renderTimer) clearTimeout(renderTimer); renderTimer = setTimeout(()=>renderAll(), 250); }
@@ -757,7 +958,7 @@ let zoom = 1;
 function applyZoom(){ document.getElementById("zoomVal").textContent = Math.round(zoom*100)+"%"; pagesEl.style.setProperty("--zoom", zoom); }
 document.getElementById("pickFolder").addEventListener("click", ()=>document.getElementById("fileInput").click());
 document.getElementById("fileInput").addEventListener("change", e=>{ if(e.target.files.length) loadFolder(e.target.files); });
-document.getElementById("exportPdf").addEventListener("click", ()=>window.print());
+document.getElementById("exportPdf").addEventListener("click", exportPDF);
 document.getElementById("zoomIn").addEventListener("click", ()=>{ zoom = Math.min(2, zoom+0.1); applyZoom(); });
 document.getElementById("zoomOut").addEventListener("click", ()=>{ zoom = Math.max(0.3, zoom-0.1); applyZoom(); });
 
@@ -766,3 +967,4 @@ applyZoom();
 </script>
 </body>
 </html>
+
