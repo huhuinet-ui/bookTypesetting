@@ -40,6 +40,47 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
 #empty { color:#eee; text-align:center; margin-top:120px; font-size:15px; line-height:2; }
 #empty b { color:#fff; }
 #statusBar { position:sticky; bottom:0; background:rgba(20,20,20,.85); color:#eee; padding:4px 12px; font-size:12px; display:flex; justify-content:space-between; }
+
+/* 工作台界面，仅用于屏幕预览 */
+:root { --accent:#326b58; --bg:#edf1ef; --panel:#fff; --line:#dce4df; }
+body { color:#25392f; }
+#toolbar { padding:16px 24px; gap:14px; box-shadow:0 2px 12px #203c2910; }
+#toolbar h1 { font-size:19px; letter-spacing:1px; }
+#toolbar button { min-height:38px; border-radius:8px; border-color:var(--line); font-weight:600; }
+#toolbar button:hover { background:#eaf2ed; }
+#toolbar button.primary:hover { background:#285543; }
+button:disabled { opacity:.45; cursor:not-allowed!important; }
+button:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid #80b5a0; outline-offset:2px; }
+#layout { height:calc(100dvh - 71px); }
+#panel { width:360px; min-width:360px; padding:22px 18px; }
+.panel-heading { font-size:17px; margin:0 0 6px; }
+.panel-note { color:#718278; font-size:12px; line-height:1.8; margin:0 0 16px; }
+#settingSearch { width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px; background:#f7f9f7; font:inherit; }
+.panel-actions { display:flex; justify-content:flex-end; gap:12px; padding:10px 0; }
+.panel-actions button { border:0; background:none; color:var(--accent); cursor:pointer; padding:4px; }
+#panel h2.group-title { margin:10px 0 0; padding:13px 12px; background:#f2f6f3; border:1px solid var(--line); border-radius:8px; font-size:13px; }
+.group-title button { display:flex; justify-content:space-between; width:100%; padding:0; border:0; background:none; font:inherit; color:inherit; cursor:pointer; text-align:left; }
+.group-title button::after { content:'−'; color:#729280; }
+.group-title button[aria-expanded=false]::after { content:'+'; }
+#panel .gbody { padding:14px 8px; gap:14px 12px; }
+#panel label { font-size:12px; color:#556a5d; }
+#panel .field { gap:6px; }
+#panel input[type=number],#panel input[type=text],#panel select { min-height:35px; border-radius:6px; border-color:var(--line); font-size:13px; }
+#panel input[type=color] { height:35px; border-radius:6px; }
+#panel input[type=checkbox] { accent-color:var(--accent); width:16px; height:16px; }
+#preview { background:#dfe5e1; padding:28px 24px 60px; position:relative; }
+.pagedjs_page { box-shadow:0 5px 24px #203c2926; margin-bottom:24px; }
+#empty { max-width:600px; margin:9vh auto 0; padding:42px; color:#62776a; background:#ffffffd9; border:1px solid #fff; border-radius:18px; text-align:left; font-size:14px; }
+#empty b { color:#25392f; font-size:26px; }
+#empty .eyebrow { font-size:11px; letter-spacing:3px; color:var(--accent); margin-bottom:12px; }
+#empty ol { padding-left:22px; line-height:2.4; margin:22px 0; }
+#empty button { background:var(--accent); color:white; border:0; border-radius:8px; padding:12px 22px; font:inherit; cursor:pointer; }
+#empty small { display:block; margin-top:18px; line-height:1.8; }
+#statusBar { border-radius:8px; background:#253e33ed; padding:10px 16px; gap:16px; z-index:40; }
+#noSettings { color:#718278; padding:20px 0; text-align:center; }
+[hidden] { display:none!important; }
+@media(max-width:900px) { #toolbar { padding:12px; gap:8px; } #toolbar .hint { display:none; } #layout { height:calc(100dvh - 120px); } #panel { width:300px; min-width:300px; } }
+@media(max-width:620px) { #layout { flex-direction:column; height:auto; } #panel { width:100%; min-width:0; max-height:45vh; border-bottom:1px solid var(--line); } #preview { min-height:55vh; } #empty { margin:12px auto; padding:24px; } #srcInfo { max-width:150px; } #toolbar h1 { width:100%; } }
 </style>
 <style media="print" data-pagedjs-ignore>
   #toolbar, #panel, #statusBar, #empty { display:none !important; }
@@ -54,10 +95,13 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
 <body>
 <div id="toolbar">
   <h1>图书排版工具</h1>
-  <button id="pickFolder">选择书籍文件夹</button>
+  <button id="pickFolder">1 · 导入书稿</button>
+  <button id="importWord" type="button">Word 转 Markdown</button>
   <span id="srcInfo">未选择文件</span>
-  <button id="exportPdf" class="primary" disabled>导出 PDF</button>
-  <span class="hint">直接下载 PDF · 300 dpi（图像型）</span>
+  <button id="exportPdf" class="primary" disabled title="导入书稿并完成预览后即可导出">3 · 导出 PDF</button>
+  <button id="exportWord" disabled title="通过本地 Python 和 Microsoft Word 导出；其他章节版式以整页图像保留效果，正文可编辑">导出完整 Word</button>
+  <span class="hint">Word 使用本地排版引擎 · PDF 使用当前预览</span>
+  <span class="hint" hidden>直接下载 PDF · 300 dpi（图像型）</span>
   <span style="flex:1"></span>
   <div id="zoomGroup">
     缩放 <button id="zoomOut">−</button><span id="zoomVal">100%</span><button id="zoomIn">+</button>
@@ -65,13 +109,27 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
 </div>
 <div id="layout">
   <aside id="panel">
-    <div id="formHost"></div>
+    <h2 class="panel-heading">2 · 调整版式</h2>
+    <p class="panel-note">修改参数后自动更新预览。展开分组调整细节，数值单位标在名称旁。</p>
+    <input id="settingSearch" type="search" placeholder="搜索参数，如：字号、边距、目录" aria-label="搜索排版参数">
+    <div class="panel-actions"><button id="expandSettings" type="button">全部展开</button><button id="collapseSettings" type="button">全部收起</button></div>
+    <div id="formHost"></div><p id="noSettings" hidden>没有找到匹配的参数，请换个关键词。</p>
   </aside>
   <main id="preview">
-    <div id="pages"><div id="empty"><b>欢迎使用图书排版工具</b><br>点左上角「选择书籍文件夹」，选中放 .md 和图片的文件夹即可开始</div></div>
-    <div id="statusBar" style="display:none"><span id="stInfo"></span><span id="stPage"></span></div>
+    <div id="pages"><div id="empty"><div class="eyebrow">BOOK TYPESETTING STUDIO</div><b>把书稿，变成一本书。</b><p>从导入书稿开始，在右侧实时检查每一页的排版。</p><ol><li>选择包含 Markdown（.md）和图片的书籍文件夹</li><li>在左侧调整纸张、字体、章节页与目录</li><li>检查预览，导出 300 dpi 图像型 PDF</li></ol><button id="emptyImport" type="button">选择书籍文件夹</button><small>建议文件夹内只保留一份主书稿；存在多个 .md 时会读取第一份。<br>字体需已安装在本机。</small></div></div>
+    <div id="statusBar" style="display:none"><span id="stInfo" role="status" aria-live="polite"></span><span id="stPage"></span></div>
   </main>
 </div>
+<dialog id="wordImportDialog" style="max-width:580px;width:90%;border:1px solid #dce4df;border-radius:14px;padding:26px;color:#25392f">
+  <h2 style="margin-top:0">Word 转 Markdown</h2>
+  <p>选择 .docx 文件，提取文字与图片，转换后自动载入排版工具。</p>
+  <p><input id="wordSource" type="file" accept=".docx"></p>
+  <label><input id="bracketSubtitle" type="checkbox"> 将整段【文字】识别为小标题（去掉括号）</label>
+  <p style="font-size:12px;line-height:1.8;color:#718278">沿用 word2md.py 的转换规则，标题猜测结果请查看转换报告。表格、页眉页脚和复杂版式不保证保留；旧版 .doc 请先另存为 .docx。</p>
+  <p id="wordImportStatus" role="status" aria-live="polite"></p>
+  <pre id="wordImportReport" style="white-space:pre-wrap;max-height:180px;overflow:auto;font-size:12px"></pre>
+  <div style="display:flex;gap:12px;flex-wrap:wrap"><button id="convertWord" type="button">转换并载入</button><a id="downloadMarkdown" hidden>下载 Markdown 与图片 ZIP</a><button id="closeWordImport" type="button">关闭</button></div>
+</dialog>
 <template id="bookContent"></template>
 <input type="file" id="fileInput" webkitdirectory multiple style="display:none">
 <script>
@@ -151,6 +209,7 @@ const GROUPS = [
    {k:"frontTopLines",l:"标题上方空行",t:"num",d:3,u:"行",s:1,min:0,max:20},
  ]},
  { title:"插图", items:[
+   {k:"imgStyle",l:"插图版式",t:"select",d:"装饰版式：色块与引线",opts:["装饰版式：色块与引线","简洁居中：图片与下方图注"]},
    {k:"captionSize",l:"图注字号",t:"num",d:9,u:"pt",s:0.5,min:5,max:20},
    {k:"imgMaxWRatio",l:"最大宽度占比",t:"num",d:0.8,u:"",s:0.05,min:0.1,max:1},
    {k:"imgBlockOn",l:"图片衬色块",t:"bool",d:true},
@@ -200,7 +259,7 @@ const formHost = document.getElementById("formHost");
 function buildForm(){
   let html = "";
   for(const g of GROUPS){
-    html += `<h2 class="group-title" data-g="${g.title}">${g.title}</h2><div class="gbody" data-g="${g.title}">`;
+    html += `<h2 class="group-title" data-g="${g.title}"><button type="button" aria-expanded="${GROUPS.indexOf(g)===0}" aria-controls="group_${GROUPS.indexOf(g)}">${g.title}</button></h2><div id="group_${GROUPS.indexOf(g)}" class="gbody ${GROUPS.indexOf(g)===0?"":"collapsed"}" data-g="${g.title}">`;
     for(const it of g.items){
       const val = P[it.k];
       if(it.t === "bool"){
@@ -222,6 +281,7 @@ function buildForm(){
   }
   html += `<datalist id="fontlist">${FONT_SUGGEST.map(f=>`<option value="${f}">`).join("")}</datalist>`;
   formHost.innerHTML = html;
+  formHost.querySelectorAll(".field label").forEach(label=>label.htmlFor=label.parentElement.querySelector("input,select").id);
   formHost.querySelectorAll("input,select").forEach(el=>{
     el.addEventListener("input", ()=>{ readForm(); scheduleRender(); });
     el.addEventListener("change", ()=>{ readForm(); scheduleRender(); });
@@ -230,6 +290,7 @@ function buildForm(){
     h.addEventListener("click", ()=>{
       const b = formHost.querySelector(`.gbody[data-g="${h.dataset.g}"]`);
       b.classList.toggle("collapsed");
+      h.querySelector("button").setAttribute("aria-expanded", !b.classList.contains("collapsed"));
     });
   });
 }
@@ -432,6 +493,7 @@ function loadFolder(fileList){
     parsedData = parseBook(String(reader.result));
     document.getElementById("srcInfo").textContent = mdRel + "（共 " + mds.length + " 个 .md，用第一个）";
     document.getElementById("exportPdf").disabled = false;
+    document.getElementById("exportWord").disabled = false;
     await renderAll();
   };
   reader.readAsText(mdFile, "utf-8");
@@ -471,9 +533,9 @@ function buildCSS(){
 @page { size: ${W}mm ${H}mm; margin: 0; }
 @page :left { margin: ${t}mm ${inner}mm ${b}mm ${outer}mm; }
 @page :right { margin: ${t}mm ${outer}mm ${b}mm ${inner}mm; }
-@page toc-reference { margin:${P.bleed+P.pageH*.12}mm ${P.bleed+P.pageW*.15}mm ${P.bleed+P.pageH*.11}mm ${P.bleed+P.pageW*.18}mm; }
-@page toc-reference:left { margin:${P.bleed+P.pageH*.12}mm ${P.bleed+P.pageW*.18}mm ${P.bleed+P.pageH*.11}mm ${P.bleed+P.pageW*.15}mm; }
-@page toc-reference:right { margin:${P.bleed+P.pageH*.12}mm ${P.bleed+P.pageW*.15}mm ${P.bleed+P.pageH*.11}mm ${P.bleed+P.pageW*.18}mm; }
+@page toc-reference { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
+@page toc-reference:left { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
+@page toc-reference:right { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
 .toc-reference-wrap { page:toc-reference; }
 .break-page { break-before: page; }
 .break-right { break-before: right; }
@@ -510,15 +572,15 @@ function buildCSS(){
 .toc-entry { display:flex; justify-content:space-between; align-items:baseline; line-height:${P.entrySpacing}; margin:0; }
 .toc-entry .toc-text { white-space:pre-wrap; }
 .toc-entry .toc-num { white-space:nowrap; }
-.toc-reference { width:100%; padding:2mm 0; }
-.toc-reference .toc-title { text-align:right; margin:8mm 0 21mm; font-weight:normal; line-height:1.25; break-inside:avoid; break-after:avoid; }
-.toc-reference .toc-english { display:block; font-family:"Times New Roman",serif; font-size:.85em; letter-spacing:.4pt; }
-.toc-reference .toc-section-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterTocSize}pt; font-weight:${P.chapterTocBold?"bold":"normal"}; line-height:1.4; margin:20pt 0 17pt; break-after:avoid; break-inside:avoid; }
-.toc-reference .toc-reference-row { display:flex; align-items:baseline; gap:8pt; font-size:${P.tocEntrySize}pt; line-height:${P.entrySpacing}; margin:0 0 3pt; break-inside:avoid; }
-.toc-reference .toc-sequence { flex:0 0 16pt; font-family:"Times New Roman",serif; font-size:.85em; font-style:italic; font-weight:bold; color:#555; }
-.toc-reference .toc-article-name { flex:1; min-width:0; overflow-wrap:anywhere; }
-.toc-reference .toc-meta { flex:0 0 34%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:.9em; }
-.toc-reference .toc-num { display:inline-block; min-width:3ch; font-family:"Times New Roman",serif; font-variant-numeric:tabular-nums; }
+.toc-reference { --ref-scale:${(P.pageW+2*P.bleed)/(484.724*25.4/72)}; width:100%; padding:0; }
+.toc-reference .toc-title { text-align:right; margin:0 0 calc(42pt * var(--ref-scale)); font-size:calc(10.57pt * var(--ref-scale)); font-weight:normal; line-height:calc(13pt * var(--ref-scale)); break-inside:avoid; break-after:avoid; }
+.toc-reference .toc-english { display:block; font-family:"Times New Roman",serif; font-size:calc(9.13pt * var(--ref-scale)); letter-spacing:0; }
+.toc-reference .toc-section-title { font-family:${fontStack(P.fTitle)}; font-size:calc(13.45pt * var(--ref-scale)); font-weight:${P.chapterTocBold?"bold":"normal"}; line-height:calc(19pt * var(--ref-scale)); margin:calc(20pt * var(--ref-scale)) 0 calc(17pt * var(--ref-scale)); break-after:avoid; break-inside:avoid; }
+.toc-reference .toc-reference-row { display:flex; align-items:baseline; gap:0; font-size:calc(10pt * var(--ref-scale)); line-height:calc(20pt * var(--ref-scale)); margin:0; break-inside:avoid; }
+.toc-reference .toc-sequence { flex:0 0 calc(23pt * var(--ref-scale)); font-family:"Times New Roman",serif; font-size:calc(9pt * var(--ref-scale)); font-style:italic; font-weight:bold; color:#555; }
+.toc-reference .toc-article-name { padding-right:8pt; flex:1; min-width:0; overflow-wrap:anywhere; }
+.toc-reference .toc-meta { flex:0 0 34%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:1em; }
+.toc-reference .toc-num { display:inline-block; min-width:3ch; font-family:"Times New Roman",serif; font-variant-numeric:tabular-nums; font-size:.877em; }
 .toc-reference .toc-front-entry { font-size:${P.chapterTocSize}pt; margin-bottom:12pt; }
 .poem-title { font-family:${fontStack(P.fTitle)}; font-size:${P.poemTitleSize}pt; text-align:center; margin:0 0 ${P.poemTitleAfter}pt 0; }
 .poem-meta { font-size:${P.poemMetaSize}pt; text-align:center; margin:0 0 ${P.poemMetaAfter}pt 0; }
@@ -548,6 +610,10 @@ function renderImage(path, caption){
   const wmm = Math.min(natWmm, maxWmm);
   const hmm = wmm * info.h/info.w;
   const url = info.url;
+  if(P.imgStyle === "简洁居中：图片与下方图注"){
+    const cap = caption ? `<figcaption class="img-caption" style="padding-top:${P.imgLineGap}pt;font-weight:normal;overflow-wrap:anywhere;">${esc(caption)}</figcaption>` : "";
+    return `<figure class="img-unit"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}</figure>`;
+  }
   let blockHtml = "";
   if(P.imgBlockOn){
     const bw = wmm*P.imgBlockSize, bh = hmm*P.imgBlockSize;
@@ -963,8 +1029,34 @@ document.getElementById("zoomIn").addEventListener("click", ()=>{ zoom = Math.mi
 document.getElementById("zoomOut").addEventListener("click", ()=>{ zoom = Math.max(0.3, zoom-0.1); applyZoom(); });
 
 buildForm();
+function filterSettings(){
+  const query=document.getElementById("settingSearch").value.trim().toLowerCase();
+  let matches=0;
+  formHost.querySelectorAll(".group-title").forEach(h=>{
+    const body=h.nextElementSibling;
+    let count=0;
+    body.querySelectorAll(".field,.bool-row").forEach(field=>{
+      const match=!query || (h.dataset.g+field.textContent).toLowerCase().includes(query);
+      field.hidden=!match; if(match) count++;
+    });
+    h.hidden=body.hidden=!count; matches+=count;
+    if(query && count) body.classList.remove("collapsed");
+    h.querySelector("button").setAttribute("aria-expanded",!body.classList.contains("collapsed"));
+  });
+  document.getElementById("noSettings").hidden=matches>0;
+}
+document.getElementById("settingSearch").addEventListener("input",filterSettings);
+for(const [id,collapsed] of [["expandSettings",false],["collapseSettings",true]]){
+  document.getElementById(id).addEventListener("click",()=>{
+    formHost.querySelectorAll(".gbody").forEach(body=>body.classList.toggle("collapsed",collapsed));
+    formHost.querySelectorAll(".group-title button").forEach(button=>button.setAttribute("aria-expanded",!collapsed));
+  });
+}
+document.getElementById("emptyImport").addEventListener("click",()=>document.getElementById("fileInput").click());
 applyZoom();
 </script>
+<script src="word-import.js" data-pagedjs-ignore></script>
+<script src="word-export.js" data-pagedjs-ignore></script>
 </body>
 </html>
 
