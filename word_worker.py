@@ -17,6 +17,8 @@ def main():
                 if not isinstance(value, (int, float)) or not 0 <= value <= 1000:
                     raise ValueError("无效参数：" + key)
             setattr(full.book, attr, value)
+    for key, attr in {"fChapterNumber":"F_CHAPTER_NUMBER", "fChapterTitle":"F_CHAPTER_TITLE", "fChapterIntro":"F_CHAPTER_INTRO"}.items():
+        if key in p: setattr(full.book, attr, str(p[key]))
     full.book.BOOK_COLOR = RGBColor.from_string(p["bookColor"].lstrip("#"))
     full.book.RULE_COLOR = p["ruleColor"].lstrip("#")
     if p.get("imgStyle", "").startswith("简洁居中"):
@@ -27,6 +29,12 @@ def main():
         if key in p: setattr(full.toc, attr, p[key])
     full.toc.ENTRY_LEADER = {"空白":WD_TAB_LEADER.SPACES,"点线":WD_TAB_LEADER.DOTS,"短横线":WD_TAB_LEADER.DASHES}[p.get("tocLeader","空白")]
     full.SRC, full.BOOK_NAME, full.OUT = config["source"], config["name"], config["output"]
+    full.TITLE_PAGE = bool(p.get("titlePageOn", True))
+    full.TITLE_PAGE_FROM_SOURCE = bool(p.get("titlePageFromSource", True))
+    full.TITLE_PAGE_TEXT = str(p.get("titlePageText", ""))
+    full.TITLE_PAGE_TITLE = str(p.get("titlePageTitle", ""))
+    full.TITLE_PAGE_AUTHOR = str(p.get("titlePageAuthor", ""))
+    full.TITLE_PAGE_SIZE = max(10, min(72, float(p.get("titlePageSize", 28))))
     full.book.SRC = full.SRC
     # Uploaded manuscripts may reference only uploaded files, never local disk paths.
     root = Path(config["root"]).resolve()

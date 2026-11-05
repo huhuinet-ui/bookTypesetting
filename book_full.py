@@ -11,7 +11,7 @@
   #### 标题：+ 作者：    —— 文章（无作者则省略标题下划线和作者名）
   图片：+ 图片名：       —— 插图 + 图注
 
-成书顺序：前言页 → 目录页 → 正文 → 后记页（前言/目录不显示页码，正文从第 1 页开始；
+成书顺序：扉页 → 前言页 → 目录页 → 正文 → 后记页（前言/目录不显示页码，正文从第 1 页开始；
 目录里「前言/自序」只列标题、不写页码）。
 目录页码自动计算：脚本会先单独排一遍正文并转 PDF，量出每章/每篇的真实起始页，再写进目录。
 改样式：分别去改 book_layout.py 和 book_toc_horizontal.py 顶部参数区。
@@ -35,6 +35,12 @@ SRC = sys.argv[1] if len(sys.argv) > 1 else r"D:\纸质文集\你总是有选择
 BOOK_NAME = sys.argv[2] if len(sys.argv) > 2 else "你总是有选择的"              # 页眉上显示的书名
 OUT = os.path.join(os.path.dirname(os.path.abspath(SRC)),
                    os.path.splitext(os.path.basename(SRC))[0] + ".docx")        # 输出到源文件同目录、同名
+TITLE_PAGE = True                         # 在序言/目录前增加独立扉页
+TITLE_PAGE_FROM_SOURCE = True             # 使用开篇一级标题及正文，或显式“扉页：标题”
+TITLE_PAGE_TEXT = ""                      # 自定义扉页正文，留空时按开关读取书稿
+TITLE_PAGE_TITLE = ""                     # 留空使用书名
+TITLE_PAGE_AUTHOR = ""                    # 扉页作者，可留空
+TITLE_PAGE_SIZE = 28                      # 扉页书名字号（磅）
 TOC_TITLE = "目录"                          # 目录页大标题
 
 # ---- 目录里章节/文章行的样式 ----
@@ -69,7 +75,7 @@ def add_toc_line(doc, text, page, size, bold=False, indent_pt=0, pad=None, keep_
 
 
 def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
-    """在文档里排目录页（横排）。preface_title：前言/自序，只列标题、不写页码。"""
+    """在文档里排目录页（横排）。前言/序言在目录之前独立展示，不加入目录。"""
     tp = doc.add_paragraph()
     tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     tp.paragraph_format.space_before = Pt(toc.TOP_LINES * toc.ENTRY_SIZE)
@@ -78,8 +84,6 @@ def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
     toc.R(tp, TOC_TITLE, toc.TITLE_SIZE, bold=True)
 
     entries = []
-    if preface_title:
-        entries.append((preface_title, "", CHAPTER_TOC_SIZE, CHAPTER_TOC_BOLD, 0))
     for ch in chapters:
         if ch["title"] is not None:
             entries.append((ch["title"], page_map.get(ch["title"], ""),
@@ -220,7 +224,18 @@ def main():
 
     doc, sec1 = book.new_doc()      # 第一节 = 前言页（无前言时就是目录页）
 
-    # 前言/自序页排在最前（目录之前），暗码（不显示页码）
+    if TITLE_PAGE:
+        book.clear_header(sec1)
+        remove_page_number_start(sec1._sectPr)
+        book.add_title_page(doc,
+                            TITLE_PAGE_TITLE or (data.get("title_page_title") if TITLE_PAGE_FROM_SOURCE else None) or BOOK_NAME,
+                            TITLE_PAGE_AUTHOR, TITLE_PAGE_SIZE,
+                            TITLE_PAGE_TEXT or ((data.get("title_page") or "") if TITLE_PAGE_FROM_SOURCE else ""))
+        sec1 = doc.add_section(WD_SECTION.NEW_PAGE)
+        remove_page_number_start(sec1._sectPr)
+        book.clear_header(sec1)
+
+    # 序言接在扉页之后，目录之前，不显示页码。
     if data["preface"] is not None:
         book.clear_header(sec1)
         book.add_front_page(doc, data["preface_title"], data["preface"])
@@ -230,7 +245,7 @@ def main():
     else:
         toc_sec = sec1
 
-    build_toc(doc, chapters, page_map, pad=pad, preface_title=data["preface_title"])
+    build_toc(doc, chapters, page_map, pad=pad)
 
     sec2 = doc.add_section(WD_SECTION.ODD_PAGE)   # 正文第一节：从奇数页(右页)开始，保证正文页码奇偶=物理页奇偶，色块/标题镜像才和页眉一致
     build_body(doc, chapters, sec2, pad=pad, page_map=page_map)

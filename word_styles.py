@@ -7,44 +7,8 @@ from docx.oxml.ns import qn
 def install_styles(full, params, artwork):
     book = full.book
     if not params.get('chapterStyle', '版式一').startswith('版式一'):
-        if not artwork:
-            raise ValueError('缺少章节页图像，请更新并刷新排版工具后重试。')
-        index = [0]
-        # Chapter images already contain background, ornament and trim marks.
-        book.add_page_background = lambda *args, **kwargs: None
-        def chapter(doc, title, intro=None, anchor=None):
-            if index[0] >= len(artwork):
-                raise ValueError('章节页图像数量不足')
-            path = artwork[index[0]]
-            index[0] += 1
-            paragraph = doc.add_paragraph()
-            paragraph.paragraph_format.space_after = Pt(0)
-            paragraph.paragraph_format.line_spacing = Pt(1)
-            book.add_anchor(paragraph, anchor)
-            run = paragraph.add_run()
-            run.add_picture(path, width=Mm(book.PAGE_W+2*book.BLEED_MM), height=Mm(book.PAGE_H+2*book.BLEED_MM))
-            inline = run._r.find('.//' + qn('wp:inline'))
-            # Anchor to physical page, so margins do not shrink or move the artwork.
-            inline.tag = qn('wp:anchor')
-            for key, val in dict(simplePos='0', relativeHeight='0', behindDoc='1', locked='0', layoutInCell='1', allowOverlap='1').items():
-                inline.set(key, val)
-            for tag in ('simplePos', 'positionH', 'positionV'):
-                element = OxmlElement('wp:'+tag)
-                if tag == 'simplePos':
-                    element.set('x','0');element.set('y','0')
-                else:
-                    element.set('relativeFrom','page')
-                    offset=OxmlElement('wp:posOffset');offset.text='0';element.append(offset)
-                inline.insert({'simplePos':0,'positionH':1,'positionV':2}[tag],element)
-            wrap=OxmlElement('wp:wrapNone')
-            inline.insert(list(inline).index(inline.find(qn('wp:docPr'))),wrap)
-        # Measurement and final export traverse chapters separately.
-        original_build = full.build_body
-        def build_body(*args, **kwargs):
-            index[0] = 0
-            return original_build(*args, **kwargs)
-        full.build_body = build_body
-        book.add_chapter_page = chapter
+        from word_chapters import install_chapters
+        install_chapters(full, params, artwork)
 
     if params.get('tocStyle', '').startswith('版式二'):
         def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
@@ -59,16 +23,24 @@ def install_styles(full, params, artwork):
             row_size=10*scale
             chapter_size=13.45*scale
             row_pitch=20*scale
-            title=doc.add_paragraph();title.alignment=WD_ALIGN_PARAGRAPH.RIGHT
-            pf=title.paragraph_format;pf.space_before=Pt(0);pf.space_after=Pt(42*scale)
-            pf.line_spacing=Pt(13*scale);pf.keep_with_next=True
+            # Two explicit compact paragraphs avoid Word expanding a soft line break
+            # with inherited paragraph-mark formatting or document-grid settings.
+            title=doc.add_paragraph()
+            english_line=doc.add_paragraph()
+            for paragraph, size, after in ((title,10.57*scale,0),(english_line,9.13*scale,42*scale)):
+                paragraph.alignment=WD_ALIGN_PARAGRAPH.RIGHT
+                pf=paragraph.paragraph_format
+                pf.space_before=Pt(0);pf.space_after=Pt(after)
+                pf.line_spacing=Pt(13*scale);pf.keep_with_next=True
+                ppr=paragraph._p.get_or_add_pPr()
+                snap=OxmlElement('w:snapToGrid');snap.set(qn('w:val'),'0');ppr.append(snap)
+                # Format the paragraph mark too, so no larger Normal font sets its height.
+                rpr=OxmlElement('w:rPr')
+                sz=OxmlElement('w:sz');sz.set(qn('w:val'),str(round(size*2)));rpr.append(sz)
+                ppr.append(rpr)
             full.toc.R(title, full.TOC_TITLE, 10.57*scale, bold=False)
-            title.add_run().add_break()
-            english=title.add_run('Content');english.font.name='Times New Roman'
+            english=english_line.add_run('Content');english.font.name='Times New Roman'
             english.font.size=Pt(9.13*scale)
-            if preface_title:
-                p=doc.add_paragraph();p.paragraph_format.space_after=Pt(12)
-                full.toc.R(p,preface_title,full.CHAPTER_TOC_SIZE)
             for chapter in chapters:
                 if chapter['title'] is not None:
                     p=doc.add_paragraph();pf=p.paragraph_format

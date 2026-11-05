@@ -84,6 +84,11 @@ F_BODY_ALT = "方正楷体_GBK"      # 正文里「特殊字体段/字」用什�
 F_HEAD = "方正清刻本悦宋简体"    # 页眉上的书名用什么字体
 F_NUM = "方正楷体简体"           # 页码用什么字体
 
+# ---- 章节页字体 ----
+F_CHAPTER_NUMBER = "方正清刻本悦宋简体"
+F_CHAPTER_TITLE = "方正清刻本悦宋简体"
+F_CHAPTER_INTRO = "方正书宋_GBK"
+
 # ---- 文章标题 ----
 TITLE_SIZE = 15
 # 标题字号（磅）：14 磅《秀茹的一生》，就是 Word 里的"四号"。
@@ -114,7 +119,7 @@ AUTHOR_SIZE = 13
 # 作者名字号（磅）：13 磅。
 
 # ---- 正文 ----
-BODY_SIZE = 10.5
+BODY_SIZE = 9
 # 正文字号（磅）：9 磅，就是 Word 里的"小五"。
 BODY_INDENT = 1.5
 # 首行缩进：每个自然段的第一行往里缩进 1.5 个汉字。
@@ -173,7 +178,7 @@ FRONT_TOP_LINES = 3
 # 前言/后记标题从页顶往下空几行。
 
 # ---- 插图 ----
-CAPTION_SIZE = 9
+CAPTION_SIZE = 8
 # 图注字号（磅）：9 磅，居中加粗，放在图片正下方。
 IMAGE_MAX_W = None
 # 插图最大宽度（厘米）。None=自动用版心宽（=纸张宽-左右边距），超过会自动缩到该宽度。
@@ -469,8 +474,9 @@ def add_crop_marks(sec):
                 idx += 1; _crop_rect(p, (x0 - CROP_BLACK_W / 2) * M, y0 * M, CROP_BLACK_W * M, L * M, "000000", idx)
 
 
-def add_textbox(doc, text, width_cm=INTRO_BOX_W, size=INTRO_SIZE, line=1.0):
+def add_textbox(doc, text, width_cm=INTRO_BOX_W, size=INTRO_SIZE, line=1.0, font=None):
     """插入一个居中的无边框文本框，框内文字左对齐（用于章节页引言等）。"""
+    font = font or F_BODY
     if not text:
         return
     if width_cm is None:
@@ -499,7 +505,7 @@ def add_textbox(doc, text, width_cm=INTRO_BOX_W, size=INTRO_SIZE, line=1.0):
         '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln>'
         '</wps:spPr><wps:txbx><w:txbxContent>'
         f'<w:p><w:pPr><w:jc w:val="left"/><w:spacing w:after="0" w:line="240" w:lineRule="atLeast"/></w:pPr>'
-        f'<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{F_BODY}"/>'
+        f'<w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font, quote=True)}"/>'
         f'<w:sz w:val="{sz}"/><w:szCs w:val="{sz}"/></w:rPr>'
         f'<w:t xml:space="preserve">{html.escape(text)}</w:t></w:r></w:p>'
         '</w:txbxContent></wps:txbx>'
@@ -569,12 +575,13 @@ def image_layout_size(path, max_width_cm):
 
 def image_total_height(path, caption, max_width_cm):
     """一张图（图 + 图注 + 段距）在正文里占的总高度（磅），用于判断一页能放几张。"""
-    _, _, h_pt = image_layout_size(path, max_width_cm)
+    _, w_pt, h_pt = image_layout_size(path, max_width_cm)
     extra = BODY_AFTER
     if caption:
-        extra += CAPTION_SIZE * 1.2
+        lines = max(1, math.ceil(len(caption) * CAPTION_SIZE / max(1, w_pt)))
+        extra += lines * CAPTION_SIZE * 1.6
         if IMG_LINE_ON:
-            extra += IMG_LINE_GAP
+            extra += IMG_LINE_GAP + 8
     return h_pt + extra
 
 
@@ -600,19 +607,24 @@ def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
     if caption:
         p.paragraph_format.keep_with_next = True   # 图片与图注同页，不分开
         if IMG_LINE_ON:
-            cap_w = len(caption) * CAPTION_SIZE
-            cap_left = (text_w_pt - cap_w) / 2
-            line_end = max(cap_left - 4, left_pt + 12)
-            cap_y = h_pt + IMG_LINE_GAP
-            _img_line(p, left_pt, h_pt, cap_y, line_end,
+            # Keep the leader above the caption, independent of its length.
+            line_end = left_pt + min(12, w_pt)
+            leader = doc.add_paragraph()
+            set_para(leader, CENTER, 0, 0, max(1.01, IMG_LINE_GAP + 8))
+            leader.paragraph_format.keep_with_next = True
+            _img_line(leader, left_pt, 0, IMG_LINE_GAP, line_end,
                       str(IMG_LINE_COLOR) if IMG_LINE_COLOR else "000000")
             pc = doc.add_paragraph()
-            set_para(pc, CENTER, 0, BODY_AFTER, 1.0)
-            pc.paragraph_format.space_before = Pt(IMG_LINE_GAP - CAPTION_SIZE * 0.6)   # 图注上移，让文字中线和引线横线对齐
+            set_para(pc, CENTER, 0, BODY_AFTER, max(1.01, CAPTION_SIZE * 1.6))
+            pc.paragraph_format.space_before = Pt(0)   # 引线已有独立占位段落，不与图注共享空间
+            pc.paragraph_format.left_indent = Pt(left_pt)
+            pc.paragraph_format.right_indent = Pt(left_pt)
             R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
         else:
             pc = doc.add_paragraph()
-            set_para(pc, CENTER, 0, BODY_AFTER, 1.0)
+            set_para(pc, CENTER, 0, BODY_AFTER, max(1.01, CAPTION_SIZE * 1.6))
+            pc.paragraph_format.left_indent = Pt(left_pt)
+            pc.paragraph_format.right_indent = Pt(left_pt)
             R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
     else:
         p.paragraph_format.space_after = Pt(BODY_AFTER)
@@ -764,6 +776,7 @@ def parse_book(src=None):
     raw = open(src, encoding="utf-8").read().split("\n")
     n = len(raw)
     preface, afterword = [], []
+    title_page, title_page_title = [], None
     preface_title = afterword_title = None
     chapters = []
     i = 0
@@ -775,9 +788,13 @@ def parse_book(src=None):
         # 前言/自序/序言/代序/写在前面 与 后记/跋（单 # 开头，且不是 ## 或 ### 或 ####）
         if s.startswith("# ") and not s.startswith("##"):
             kind = s.lstrip("#").strip()
-            if kind in PREFACE_KEYS:
+            heading_kind = re.split(r"[:：\s—–-]+", kind, maxsplit=1)[0]
+            if heading_kind == "扉页" or (not chapters and preface_title is None and title_page_title is None and heading_kind not in PREFACE_KEYS + AFTERWORD_KEYS):
+                target = title_page
+                title_page_title = re.sub(r"^扉页\s*[:：]\s*", "", kind)
+            elif heading_kind in PREFACE_KEYS:
                 target, preface_title = preface, kind
-            elif kind in AFTERWORD_KEYS:
+            elif heading_kind in AFTERWORD_KEYS:
                 target, afterword_title = afterword, kind
             else:
                 target = None
@@ -792,13 +809,16 @@ def parse_book(src=None):
         # 章节（### 且不是 ####）
         if s.startswith("###") and not s.startswith("####"):
             title = s.lstrip("#").strip()
-            intro = None
             j = i + 1
-            while j < n and not raw[j].strip():
+            intro_lines = []
+            while j < n and not re.match(r"^#{1,6}(?:\s|$)", raw[j].strip()):
+                intro_lines.append(re.sub(r"^(?:>\s*)+", "", raw[j].strip()))
                 j += 1
-            if j < n and raw[j].strip().startswith("简介"):
-                intro = re.sub(r"^简介\s*[:：]?\s*", "", raw[j].strip()).strip()
-                j += 1
+            while intro_lines and not intro_lines[0]: intro_lines.pop(0)
+            while intro_lines and not intro_lines[-1]: intro_lines.pop()
+            if intro_lines:
+                intro_lines[0] = re.sub(r"^(?:\*\*|__)?(?:章节引言|章节简介|简介|引言|导语)(?:\*\*|__)?\s*[:：]?\s*(?:\*\*|__)?\s*", "", intro_lines[0])
+            intro = "\n".join(intro_lines).strip() or None
             chapters.append({"title": title, "intro": intro, "articles": []})
             i = j
             continue
@@ -841,6 +861,8 @@ def parse_book(src=None):
             continue
         i += 1
     return {
+        "title_page": "\n".join(title_page) if title_page else None,
+        "title_page_title": title_page_title,
         "preface": "\n".join(preface) if preface else None,
         "preface_title": preface_title,
         "afterword": "\n".join(afterword) if afterword else None,
@@ -1013,14 +1035,38 @@ def add_chapter_page(doc, title, intro=None, anchor=None):
         R(sp, "", size=BODY_SIZE)
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 0, 1.0)
-    R(p, title, cn=F_TITLE, size=CHAPTER_SIZE)
+    R(p, title, cn=F_CHAPTER_TITLE, size=CHAPTER_SIZE)
     add_anchor(p, anchor)
     add_chapter_rule(doc)
     if intro:
         sp = doc.add_paragraph()
         set_para(sp, LEFT, 0, 0, BODY_LINE)
         R(sp, "", size=BODY_SIZE)
-        add_textbox(doc, intro)
+        add_textbox(doc, intro, font=F_CHAPTER_INTRO)
+
+
+def add_title_page(doc, title, author="", size=28, text=""):
+    """独立扉页：书名与可选作者居中；页眉由调用方置空。"""
+    p = doc.add_paragraph()
+    # Place the title in the upper middle of the finished page.
+    offset = max(0, PAGE_H * 0.32 - M_TOP)
+    p.alignment = CENTER
+    p.paragraph_format.space_before = Mm(offset)
+    p.paragraph_format.space_after = Pt(24)
+    p.paragraph_format.line_spacing = 1.5
+    R(p, title, cn=F_TITLE, size=size)
+    if author:
+        p = doc.add_paragraph()
+        p.alignment = CENTER
+        p.paragraph_format.space_after = Pt(0)
+        R(p, author, cn=F_AUTHOR, size=AUTHOR_SIZE)
+
+    if text:
+        for line in text.split("\n"):
+            if not line.strip(): continue
+            p = doc.add_paragraph()
+            set_para(p, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
+            R(p, line, cn=F_BODY, size=BODY_SIZE)
 
 
 def add_front_page(doc, title, text):

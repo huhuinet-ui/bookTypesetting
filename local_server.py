@@ -1,4 +1,6 @@
 """Launch the local typesetting UI and serialize native Word export jobs."""
+import hashlib
+from collections import OrderedDict
 import base64
 import io
 import zipfile
@@ -16,6 +18,8 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
+EXPORT_CACHE = OrderedDict()
+CACHE_LIMIT = 64 * 1024 * 1024
 MAX_UPLOAD = 300 * 1024 * 1024
 
 def safe_path(root, name):
@@ -91,6 +95,11 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if self.path == '/api/convert-word':
                 return self.convert_word(data)
+            # Cache only successful complete exports; key includes files, styles and artwork.
+            cache_key = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(',', ':')).encode()).digest()
+            if cache_key in EXPORT_CACHE:
+                EXPORT_CACHE.move_to_end(cache_key)
+                return self.reply(200, EXPORT_CACHE[cache_key], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             with tempfile.TemporaryDirectory(prefix='book_word_') as temp:
                 root = Path(temp)
                 for file in data['files']:
@@ -111,7 +120,12 @@ class Handler(BaseHTTPRequestHandler):
                 result = subprocess.run([sys.executable, str(ROOT / 'word_worker.py'), str(config)], cwd=ROOT, capture_output=True, timeout=1800)
                 if result.returncode:
                     raise RuntimeError((result.stderr or result.stdout).decode('utf-8', 'replace')[-4000:])
-                self.reply(200, output.read_bytes(), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                content = output.read_bytes()
+                if len(content) <= CACHE_LIMIT:
+                    EXPORT_CACHE[cache_key] = content
+                    while len(EXPORT_CACHE) > 2 or sum(map(len, EXPORT_CACHE.values())) > CACHE_LIMIT:
+                        EXPORT_CACHE.popitem(last=False)
+                self.reply(200, content, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
         except Exception as error:
             self.reply(400, str(error).encode('utf-8'), 'text/plain; charset=utf-8')
         finally:

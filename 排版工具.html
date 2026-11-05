@@ -30,6 +30,7 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
 #panel .field.wide { grid-column:1 / -1; }
 #panel label { font-size:11px; color:#7a7262; }
 #panel input[type=number], #panel input[type=text], #panel select { padding:4px 6px; border:1px solid #cfc9ba; border-radius:3px; font-size:12px; width:100%; }
+#panel textarea { width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font:inherit; resize:vertical; }
 #panel input[type=color] { padding:0; border:1px solid #cfc9ba; border-radius:3px; width:100%; height:26px; background:#fff; cursor:pointer; }
 #panel .bool-row { grid-column:1 / -1; display:flex; align-items:center; gap:6px; font-size:12px; }
 #panel .bool-row input { width:auto; }
@@ -45,6 +46,7 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
 :root { --accent:#326b58; --bg:#edf1ef; --panel:#fff; --line:#dce4df; }
 body { color:#25392f; }
 #toolbar { padding:16px 24px; gap:14px; box-shadow:0 2px 12px #203c2910; }
+.toolbar-divider { width:1px;height:30px;background:var(--line);margin:0 4px; }
 #toolbar h1 { font-size:19px; letter-spacing:1px; }
 #toolbar button { min-height:38px; border-radius:8px; border-color:var(--line); font-weight:600; }
 #toolbar button:hover { background:#eaf2ed; }
@@ -77,6 +79,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 #empty button { background:var(--accent); color:white; border:0; border-radius:8px; padding:12px 22px; font:inherit; cursor:pointer; }
 #empty small { display:block; margin-top:18px; line-height:1.8; }
 #statusBar { border-radius:8px; background:#253e33ed; padding:10px 16px; gap:16px; z-index:40; }
+#settingsNav { display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px; }
+#settingsNav button { padding:8px;border:1px solid var(--line);border-radius:6px;background:#f2f6f3;color:var(--accent);cursor:pointer;font:inherit; }
+.settings-section { font-size:12px;color:#718278;margin:22px 2px 10px;letter-spacing:1px;scroll-margin-top:12px; }
 #noSettings { color:#718278; padding:20px 0; text-align:center; }
 [hidden] { display:none!important; }
 @media(max-width:900px) { #toolbar { padding:12px; gap:8px; } #toolbar .hint { display:none; } #layout { height:calc(100dvh - 120px); } #panel { width:300px; min-width:300px; } }
@@ -98,8 +103,10 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
   <button id="pickFolder">1 · 导入书稿</button>
   <button id="importWord" type="button">Word 转 Markdown</button>
   <span id="srcInfo">未选择文件</span>
+  <span class="toolbar-divider" aria-hidden="true"></span>
+  <select id="pdfQuality" aria-label="PDF 导出质量" title="快速模式生成更快、文件更小；印刷模式保留 300 dpi 无损图像"><option value="fast">PDF：快速 · 150 dpi</option><option value="print">PDF：印刷 · 300 dpi 无损</option></select>
   <button id="exportPdf" class="primary" disabled title="导入书稿并完成预览后即可导出">3 · 导出 PDF</button>
-  <button id="exportWord" disabled title="通过本地 Python 和 Microsoft Word 导出；其他章节版式以整页图像保留效果，正文可编辑">导出完整 Word</button>
+  <button id="exportWord" disabled title="通过本地 Python 和 Microsoft Word 导出；章节文字可编辑，装饰素材单独嵌入">导出完整 Word</button>
   <span class="hint">Word 使用本地排版引擎 · PDF 使用当前预览</span>
   <span class="hint" hidden>直接下载 PDF · 300 dpi（图像型）</span>
   <span style="flex:1"></span>
@@ -110,14 +117,15 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 <div id="layout">
   <aside id="panel">
     <h2 class="panel-heading">2 · 调整版式</h2>
-    <p class="panel-note">修改参数后自动更新预览。展开分组调整细节，数值单位标在名称旁。</p>
+    <p class="panel-note">先设置纸张和字体，再按书页顺序调整内容，最后检查页码与印刷。修改后自动更新预览。</p>
     <input id="settingSearch" type="search" placeholder="搜索参数，如：字号、边距、目录" aria-label="搜索排版参数">
+    <nav id="settingsNav" aria-label="设置分类"></nav>
     <div class="panel-actions"><button id="expandSettings" type="button">全部展开</button><button id="collapseSettings" type="button">全部收起</button></div>
     <div id="formHost"></div><p id="noSettings" hidden>没有找到匹配的参数，请换个关键词。</p>
   </aside>
   <main id="preview">
     <div id="pages"><div id="empty"><div class="eyebrow">BOOK TYPESETTING STUDIO</div><b>把书稿，变成一本书。</b><p>从导入书稿开始，在右侧实时检查每一页的排版。</p><ol><li>选择包含 Markdown（.md）和图片的书籍文件夹</li><li>在左侧调整纸张、字体、章节页与目录</li><li>检查预览，导出 300 dpi 图像型 PDF</li></ol><button id="emptyImport" type="button">选择书籍文件夹</button><small>建议文件夹内只保留一份主书稿；存在多个 .md 时会读取第一份。<br>字体需已安装在本机。</small></div></div>
-    <div id="statusBar" style="display:none"><span id="stInfo" role="status" aria-live="polite"></span><span id="stPage"></span></div>
+    <div id="statusBar" style="display:none"><span id="stInfo" role="status" aria-live="polite"></span><span id="stPage"></span><span id="stSpine"></span></div>
   </main>
 </div>
 <dialog id="wordImportDialog" style="max-width:580px;width:90%;border:1px solid #dce4df;border-radius:14px;padding:26px;color:#25392f">
@@ -147,6 +155,14 @@ window.PagedConfig = { auto:false };
 /* ==================== 参数定义 ==================== */
 const FONT_SUGGEST = ["方正清刻本悦宋简体","方正楷体简体","方正书宋_GBK","方正宋三简体","方正小标宋简体","宋体","仿宋","楷体","黑体","微软雅黑","思源宋体","思源黑体"];
 const GROUPS = [
+ { title:"扉页", items:[
+   {k:"titlePageOn",l:"在序言前添加扉页",t:"bool",d:true},
+   {k:"titlePageFromSource",l:"自动读取书稿开头的标题和正文",t:"bool",d:true},
+   {k:"titlePageTitle",l:"扉页标题（留空自动识别）",t:"text",d:""},
+   {k:"titlePageText",l:"扉页正文（留空自动读取，支持分段）",t:"textarea",d:""},
+   {k:"titlePageAuthor",l:"扉页作者（可留空）",t:"text",d:""},
+   {k:"titlePageSize",l:"扉页书名字号",t:"num",d:28,u:"pt",s:1,min:10,max:72},
+ ]},
  { title:"纸张与页边距", items:[
    {k:"pageW",l:"成品宽",t:"num",d:166,u:"mm",s:1,min:50,max:600},
    {k:"pageH",l:"成品高",t:"num",d:226,u:"mm",s:1,min:50,max:600},
@@ -161,6 +177,9 @@ const GROUPS = [
    {k:"fTitle",l:"标题字体",t:"font",d:"方正清刻本悦宋简体"},
    {k:"fAuthor",l:"作者字体",t:"font",d:"方正楷体简体"},
    {k:"fBody",l:"正文字体",t:"font",d:"方正书宋_GBK"},
+   {k:"fChapterNumber",l:"章节序号字体",t:"font",d:"方正清刻本悦宋简体"},
+   {k:"fChapterTitle",l:"章节名称字体",t:"font",d:"方正清刻本悦宋简体"},
+   {k:"fChapterIntro",l:"章节引言字体",t:"font",d:"方正书宋_GBK"},
    {k:"fHead",l:"页眉字体",t:"font",d:"方正清刻本悦宋简体"},
    {k:"fNum",l:"页码字体",t:"font",d:"方正楷体简体"},
  ]},
@@ -183,7 +202,7 @@ const GROUPS = [
    {k:"authorSize",l:"作者字号",t:"num",d:13,u:"pt",s:0.5,min:6,max:40},
  ]},
  { title:"正文", items:[
-   {k:"bodySize",l:"正文字号",t:"num",d:9,u:"pt",s:0.5,min:5,max:20},
+   {k:"bodySize",l:"正文字号（文章／前言／后记共用）",t:"num",d:9,u:"pt",s:0.5,min:5,max:20},
    {k:"bodyIndent",l:"首行缩进",t:"num",d:1.5,u:"字",s:0.1,min:0,max:10},
    {k:"bodyAfter",l:"段后间距",t:"num",d:19.5,u:"pt",s:0.5,min:0,max:60},
    {k:"bodyLine",l:"行距",t:"num",d:19.5,u:"pt",s:0.5,min:5,max:60},
@@ -193,16 +212,31 @@ const GROUPS = [
    {k:"subtitleBold",l:"小标题加粗",t:"bool",d:1},
  ]},
  { title:"章节页（篇章页）", items:[
-   {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题","版式四：玫瑰线描+竖排引言","版式五：纸飞机线描+竖排引言"]},
-   {k:"chapterSize",l:"章节名字号",t:"num",d:18,u:"pt",s:0.5,min:6,max:40},
+   {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题","版式三：玫瑰线描+竖排引言","版式四：纸飞机线描+竖排引言"]},
+   {k:"chapterSize",l:"版式1·章节名字号",t:"num",d:18,u:"pt",s:0.5,min:6,max:40},
    {k:"chapterTopLines",l:"章节名上方空行",t:"num",d:8,u:"行",s:1,min:0,max:30},
    {k:"chapterRuleW",l:"下划线宽",t:"num",d:4.36,u:"cm",s:0.1,min:0,max:20},
    {k:"chapterRulePt",l:"下划线粗细",t:"num",d:1,u:"pt",s:0.1,min:0,max:5},
-   {k:"introSize",l:"引言字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
+   {k:"introSize",l:"版式1·引言字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
    {k:"introBoxW",l:"引言框宽",t:"num",d:8.34,u:"cm",s:0.1,min:1,max:20},
-   {k:"chapter4Bg",l:"版式四/五·底色",t:"color",d:"#DFE9C9"},
+   {k:"chapter4Bg",l:"版式三/四·底色",t:"color",d:"#DFE9C9"},
    {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
+   {k:"chapter2TitleSize",l:"版式2·标题字号",t:"num",d:18,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter2TitleColor",l:"版式2·标题颜色",t:"color",d:"#DEB887"},
+   {k:"chapter4NumberSize",l:"版式3·章节序号字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter4NumberColor",l:"版式3·章节序号颜色",t:"color",d:"#20251c"},
+   {k:"chapter4TitleSize",l:"版式3·标题字号",t:"num",d:21.6,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter4TitleColor",l:"版式3·标题颜色",t:"color",d:"#20251c"},
+   {k:"chapter4IntroSize",l:"版式3·引言字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter4IntroColor",l:"版式3·引言颜色",t:"color",d:"#20251c"},
+   {k:"chapter5NumberSize",l:"版式4·章节序号字号",t:"num",d:21,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter5NumberColor",l:"版式4·章节序号颜色",t:"color",d:"#20251c"},
+   {k:"chapter5TitleSize",l:"版式4·标题字号",t:"num",d:21,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter5TitleColor",l:"版式4·标题颜色",t:"color",d:"#20251c"},
+   {k:"chapter5IntroSize",l:"版式4·引言字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter5IntroColor",l:"版式4·引言颜色",t:"color",d:"#20251c"},
+   {k:"chapterIntroAutoFit",l:"版式3/4·引言过长时自动缩小字号",t:"bool",d:false},
  ]},
  { title:"前言 / 后记", items:[
    {k:"frontSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
@@ -210,7 +244,7 @@ const GROUPS = [
  ]},
  { title:"插图", items:[
    {k:"imgStyle",l:"插图版式",t:"select",d:"装饰版式：色块与引线",opts:["装饰版式：色块与引线","简洁居中：图片与下方图注"]},
-   {k:"captionSize",l:"图注字号",t:"num",d:9,u:"pt",s:0.5,min:5,max:20},
+   {k:"captionSize",l:"图注字号",t:"num",d:8,u:"pt",s:0.5,min:5,max:20},
    {k:"imgMaxWRatio",l:"最大宽度占比",t:"num",d:0.8,u:"",s:0.05,min:0.1,max:1},
    {k:"imgBlockOn",l:"图片衬色块",t:"bool",d:true},
    {k:"imgBlockSize",l:"色块尺寸比例",t:"num",d:0.7,u:"",s:0.05,min:0.1,max:1.5},
@@ -234,7 +268,7 @@ const GROUPS = [
    {k:"pad",l:"页码补零位数",t:"num",d:2,u:"位",s:1,min:1,max:4},
  ]},
  { title:"目录", items:[
-   {k:"tocStyle",l:"目录版式",t:"select",d:"版式一：简洁目录",opts:["版式一：简洁目录","版式二：分章序号+作者页码"]},
+   {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码"]},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
    {k:"tocEntrySize",l:"条目字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
@@ -244,12 +278,27 @@ const GROUPS = [
    {k:"entrySpacing",l:"条目行距倍数",t:"num",d:1.6,u:"",s:0.1,min:1,max:3},
    {k:"tocLeader",l:"标题页码间填充",t:"select",d:"空白",opts:["空白","点线","短横线"]},
  ]},
+ { title:"书脊宽度", items:[
+   {k:"spinePaperThickness",l:"单张内文纸实测厚度",t:"num",d:0.1,u:"mm",s:0.001,min:0.01,max:1},
+   {k:"spineExtraPages",l:"另加内文空白页",t:"num",d:0,u:"页",s:1,min:0,max:1000},
+   {k:"spinePageMultiple",l:"印刷页数补齐",t:"select",d:"2页（双面）",opts:["2页（双面）","4页","8页","16页"]},
+   {k:"spineAllowance",l:"装订附加厚度",t:"num",d:0,u:"mm",s:0.1,min:0,max:30},
+ ]},
  { title:"四角裁切角线", items:[
    {k:"cropMarks",l:"加裁切角线",t:"bool",d:true},
    {k:"cropBlackW",l:"黑线粗细",t:"num",d:0.1,u:"mm",s:0.05,min:0,max:2},
    {k:"cropWhiteW",l:"白线粗细",t:"num",d:0.5,u:"mm",s:0.05,min:0,max:3},
  ]},
 ];
+// Arrange controls by the book-making workflow, independent of parameter definitions.
+const SETTING_SECTIONS = [
+ {title:"全书设置", groups:["纸张与页边距","字体","书籍主色调"]},
+ {title:"书前与目录", groups:["扉页","前言 / 后记","目录"]},
+ {title:"正文与内容", groups:["章节页（篇章页）","文章标题","作者名","正文","插图","诗歌排版"]},
+ {title:"页码与印刷", groups:["页眉与页码","书脊宽度","四角裁切角线"]},
+];
+const sectionOrder=SETTING_SECTIONS.flatMap(section=>section.groups);
+GROUPS.sort((a,b)=>sectionOrder.indexOf(a.title)-sectionOrder.indexOf(b.title));
 const P = {};
 GROUPS.forEach(g => g.items.forEach(it => P[it.k] = it.d));
 let BOOK_NAME = "";
@@ -259,6 +308,8 @@ const formHost = document.getElementById("formHost");
 function buildForm(){
   let html = "";
   for(const g of GROUPS){
+    const sectionIndex=SETTING_SECTIONS.findIndex(section=>section.groups[0]===g.title);
+    if(sectionIndex>=0) html+=`<h3 class="settings-section" id="settings_section_${sectionIndex}">${SETTING_SECTIONS[sectionIndex].title}</h3>`;
     html += `<h2 class="group-title" data-g="${g.title}"><button type="button" aria-expanded="${GROUPS.indexOf(g)===0}" aria-controls="group_${GROUPS.indexOf(g)}">${g.title}</button></h2><div id="group_${GROUPS.indexOf(g)}" class="gbody ${GROUPS.indexOf(g)===0?"":"collapsed"}" data-g="${g.title}">`;
     for(const it of g.items){
       const val = P[it.k];
@@ -271,20 +322,24 @@ function buildForm(){
         html += `<div class="field"><label>${it.l}</label><select id="f_${it.k}">${opts}</select></div>`;
       } else if(it.t === "font"){
         html += `<div class="field wide"><label>${it.l}</label><input type="text" id="f_${it.k}" value="${escAttr(val)}" list="fontlist"></div>`;
+      } else if(it.t === "textarea"){
+        html += `<div class="field wide"><label>${it.l}</label><textarea id="f_${it.k}" rows="5" placeholder="献词、寄语、引言或其他扉页内容">${esc(val)}</textarea></div>`;
       } else if(it.t === "num"){
         html += `<div class="field"><label>${it.l}<span class="unit">${it.u}</span></label><input type="number" id="f_${it.k}" value="${val}" step="${it.s}" ${it.min!=null?"min="+it.min:""} ${it.max!=null?"max="+it.max:""}></div>`;
       } else {
         html += `<div class="field wide"><label>${it.l}</label><input type="text" id="f_${it.k}" value="${escAttr(val)}"></div>`;
       }
     }
+    if(g.title==="前言 / 后记") html+=`<div class="field wide"><label>前言、后记正文字号</label><output id="frontBodySizeInfo">${P.bodySize} pt（与文章正文一致，默认 9 pt）</output><small>在「正文」分组调整共用正文字号。</small></div>`;
+    if(g.title==="书脊宽度") html+=`<div class="field wide"><output id="spineResult" aria-live="polite">导入书稿并完成排版后自动计算。</output><small style="line-height:1.8;color:#718278">估算公式：补齐后内文页数 ÷ 2 × 单张纸厚度 ＋ 装订附加厚度。纸厚默认 0.1 mm 仅作示例，请按实际纸张或印厂数据填写；不包含封面纸、精装书壳。结果依据网页总页数，Word 分页不同需按其实际页数复核。</small></div>`;
     html += `</div>`;
   }
   html += `<datalist id="fontlist">${FONT_SUGGEST.map(f=>`<option value="${f}">`).join("")}</datalist>`;
   formHost.innerHTML = html;
-  formHost.querySelectorAll(".field label").forEach(label=>label.htmlFor=label.parentElement.querySelector("input,select").id);
-  formHost.querySelectorAll("input,select").forEach(el=>{
-    el.addEventListener("input", ()=>{ readForm(); scheduleRender(); });
-    el.addEventListener("change", ()=>{ readForm(); scheduleRender(); });
+  formHost.querySelectorAll(".field label").forEach(label=>{const input=label.parentElement.querySelector("input,select,textarea");if(input)label.htmlFor=input.id;});
+  formHost.querySelectorAll("input,select,textarea").forEach(el=>{
+    el.addEventListener("input", ()=>{ readForm(); if(el.id.startsWith("f_spine")) updateSpineEstimate(); else scheduleRender(); });
+    el.addEventListener("change", ()=>{ readForm(); if(el.id.startsWith("f_spine")) updateSpineEstimate(); else scheduleRender(); });
   });
   formHost.querySelectorAll(".group-title").forEach(h=>{
     h.addEventListener("click", ()=>{
@@ -302,6 +357,8 @@ function readForm(){
     else if(it.t === "num") { const v = parseFloat(el.value); P[it.k] = isNaN(v)?it.d:v; }
     else P[it.k] = el.value;
   }
+  const info=document.getElementById("frontBodySizeInfo");
+  if(info)info.textContent=`${P.bodySize} pt（与文章正文一致，默认 9 pt）`;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -312,8 +369,8 @@ function mmpt(v){ return v*72/25.4; }
 function fontStack(cjk){ return `"Times New Roman","${cjk}",serif`; }
 function hexColor(c){ if(!c) return "#000000"; return /^#/.test(c)?c:"#"+c; }
 function isReferenceToc(){ return String(P.tocStyle||"").startsWith("版式二"); }
-function isChap5(){ return String(P.chapterStyle||"").indexOf("版式五")===0; }
-function isChap4(){ return String(P.chapterStyle||"").indexOf("版式四")===0; }
+function isChap5(){ return String(P.chapterStyle||"").includes("纸飞机"); }
+function isChap4(){ return String(P.chapterStyle||"").includes("玫瑰"); }
 function isChap2(){ return String(P.chapterStyle||"").indexOf("版式二")===0; }
 
 /* ==================== .md 解析（移植自 book_layout.py） ==================== */
@@ -410,6 +467,7 @@ function classifyPoem(lines){
 function parseBook(srcText){
   const raw = srcText.replace(/\r\n?/g,"\n").split("\n");
   const n = raw.length;
+  let titlePageText=[], titlePageTitle=null;
   let preface=[], afterword=[]; let prefaceTitle=null, afterwordTitle=null;
   const chapters=[]; let i=0;
   while(i<n){
@@ -418,8 +476,12 @@ function parseBook(srcText){
     if(s.startsWith("# ") && !s.startsWith("##")){
       const kind = s.replace(/^#+\s*/,"").trim();
       let target=null;
-      if(PREFACE_KEYS.includes(kind)){ target=preface; prefaceTitle=kind; }
-      else if(AFTERWORD_KEYS.includes(kind)){ target=afterword; afterwordTitle=kind; }
+      const headingKind=kind.split(/[:：\s—–-]+/,1)[0];
+      if(headingKind==="扉页" || (!chapters.length && prefaceTitle===null && titlePageTitle===null && !PREFACE_KEYS.includes(headingKind) && !AFTERWORD_KEYS.includes(headingKind))){
+        target=titlePageText;titlePageTitle=kind.replace(/^扉页\s*[:：]\s*/,"");
+      }
+      else if(PREFACE_KEYS.includes(headingKind)){ target=preface; prefaceTitle=kind; }
+      else if(AFTERWORD_KEYS.includes(headingKind)){ target=afterword; afterwordTitle=kind; }
       i++;
       if(target===null) continue;
       while(i<n && !raw[i].trim().startsWith("#")){ if(raw[i].trim()) target.push(raw[i].trim()); i++; }
@@ -463,18 +525,22 @@ function parseBook(srcText){
     }
     i++;
   }
-  return { preface: preface.length?preface.join("\n"):null, prefaceTitle, afterword: afterword.length?afterword.join("\n"):null, afterwordTitle, chapters };
+  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n"):null, prefaceTitle, afterword: afterword.length?afterword.join("\n"):null, afterwordTitle, chapters };
 }
 
 /* ==================== 文件与图片 ==================== */
 let markdownRelPath = "";
+let markdownSnapshot = null;
 let folderFiles = new Map();
 let imgInfo = new Map();
 let parsedData = null;
 
 function loadFolder(fileList){
   for(const info of imgInfo.values()) if(info) URL.revokeObjectURL(info.url);
-  folderFiles = new Map(); imgInfo = new Map(); markdownRelPath = "";
+  folderFiles = new Map(); imgInfo = new Map(); markdownRelPath = ""; markdownSnapshot=null; parsedData=null;
+  pagesEl.innerHTML=""; updateSpineEstimate();
+  document.getElementById("exportPdf").disabled=true;
+  document.getElementById("exportWord").disabled=true;
   const files = Array.from(fileList);
   const mds = [];
   for(const f of files){
@@ -490,19 +556,22 @@ function loadFolder(fileList){
   BOOK_NAME = mdRel.split("/").pop().replace(/\.md$/i,"");
   const reader = new FileReader();
   reader.onload = async () => {
+    markdownSnapshot = new Blob([String(reader.result)], {type:"text/markdown;charset=utf-8"});
     parsedData = parseBook(String(reader.result));
     document.getElementById("srcInfo").textContent = mdRel + "（共 " + mds.length + " 个 .md，用第一个）";
     document.getElementById("exportPdf").disabled = false;
     document.getElementById("exportWord").disabled = false;
     await renderAll();
   };
+  reader.onerror = ()=>alert("书稿读取失败，请重新选择文件夹："+mdFile.name);
   reader.readAsText(mdFile, "utf-8");
 }
-function loadImage(file){
+async function loadImage(file){
+  const sourceBlob=new Blob([await file.arrayBuffer()],{type:file.type});
   return new Promise((res,rej)=>{
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(sourceBlob);
     const im = new Image();
-    im.onload = ()=>res({url, w:im.naturalWidth, h:im.naturalHeight});
+    im.onload = ()=>res({url, sourceBlob, w:im.naturalWidth, h:im.naturalHeight});
     im.onerror = e=>{ URL.revokeObjectURL(url); rej(e); };
     im.src = url;
   });
@@ -537,6 +606,10 @@ function buildCSS(){
 @page toc-reference:left { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
 @page toc-reference:right { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
 .toc-reference-wrap { page:toc-reference; }
+.title-page { padding-top:${Math.max(0,P.pageH*.32-P.mTop)}mm; text-align:center; font-family:${fontStack(P.fTitle)}; }
+.title-page-name { font-size:${P.titlePageSize}pt; line-height:1.5; margin:0 0 24pt; overflow-wrap:anywhere; }
+.title-page-text { font-family:${fontStack(P.fBody)}; font-size:${P.bodySize}pt; text-align:justify; margin-top:24pt; }
+.title-page-author { font-family:${fontStack(P.fAuthor)}; font-size:${P.authorSize}pt; line-height:1.5; }
 .break-page { break-before: page; }
 .break-right { break-before: right; }
 .body,.article,.chapter-page,.front-page,.toc { font-family: ${fontStack(P.fBody)}; font-size: ${P.bodySize}pt; color:#000; }
@@ -553,20 +626,20 @@ function buildCSS(){
 .pagedjs_left_page .article-rule { margin-left:0; margin-right:auto; }
 .article-author { font-family:${fontStack(P.fAuthor)}; font-size:${P.authorSize}pt; color:${hexColor(P.bookColor)}; }
 .chapter-page { text-align:center; }
-.chapter-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize}pt; line-height:1.3; }
+.chapter-title { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterSize}pt; line-height:1.3; }
 .chapter-rule { height:0; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; width:${P.chapterRuleW}cm; margin:8pt auto 0 auto; }
-.chapter-intro { font-family:${fontStack(P.fBody)}; font-size:${P.introSize}pt; width:${P.introBoxW}cm; margin:14pt auto 0 auto; text-align:left; line-height:1.8; }
+.chapter-intro { font-family:${fontStack(P.fChapterIntro)}; font-size:${P.introSize}pt; width:${P.introBoxW}cm; margin:14pt auto 0 auto; text-align:left; line-height:1.8; }
 .chapter-page.chap2 { text-align:center; }
-.chap2-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize}pt; color:${hexColor(P.bookColor)}; writing-mode:vertical-rl; text-orientation:upright; display:inline-block; line-height:1.15; letter-spacing:3pt; background:#fff; padding:4pt 2pt; margin-top:${mmpt(P.chapter2Top/100*P.pageH - (P.mTop+P.bleed)).toFixed(1)}pt; }
+.chap2-title { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapter2TitleSize}pt; color:${hexColor(P.chapter2TitleColor)}; writing-mode:vertical-rl; text-orientation:upright; display:inline-block; line-height:1.15; letter-spacing:3pt; background:#fff; padding:4pt 2pt; margin-top:${mmpt(P.chapter2Top/100*P.pageH - (P.mTop+P.bleed)).toFixed(1)}pt; }
 .pagedjs_right_page .chap2-title, .pagedjs_first_page .chap2-title { transform:translateX(${((P.mRight-P.mLeft)/2).toFixed(2)}mm); }
 .pagedjs_left_page .chap2-title { transform:translateX(${((P.mLeft-P.mRight)/2).toFixed(2)}mm); }
 .chapter-page.chap4 { min-height:1pt; }
 .chap4-layout { position:absolute; inset:0; color:#20251c; pointer-events:none; }
-.chap4-number { white-space:nowrap; position:absolute; right:18%; top:20%; font-family:${fontStack(P.fTitle)}; font-size:${Math.max(10,P.chapterSize*.55)}pt; font-weight:bold; }
+.chap4-number { white-space:nowrap; position:absolute; right:18%; top:20%; font-family:${fontStack(P.fChapterNumber)}; font-size:${P[isChap5()?"chapter5NumberSize":"chapter4NumberSize"]}pt; color:${hexColor(P[isChap5()?"chapter5NumberColor":"chapter4NumberColor"])}; font-weight:bold; }
 .chap4-heading { position:absolute; right:18%; top:29%; max-width:66%; text-align:right; }
-.chap4-title { display:inline-block; font-family:${fontStack(P.fTitle)}; font-size:${P.chapterSize*1.2}pt; line-height:1.4; overflow-wrap:anywhere; text-align:left; padding-bottom:5pt; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; }
+.chap4-title { display:inline-block; font-family:${fontStack(P.fChapterTitle)}; font-size:${P[isChap5()?"chapter5TitleSize":"chapter4TitleSize"]}pt; color:${hexColor(P[isChap5()?"chapter5TitleColor":"chapter4TitleColor"])}; line-height:1.4; overflow-wrap:anywhere; text-align:left; padding-bottom:5pt; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; }
 .chap4-rose { position:absolute; right:17%; top:43%; width:13%; height:9%; }
-.chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fBody)}; font-size:${P.introSize}pt; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:anywhere; }
+.chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fChapterIntro)}; font-size:${P[isChap5()?"chapter5IntroSize":"chapter4IntroSize"]}pt; color:${hexColor(P[isChap5()?"chapter5IntroColor":"chapter4IntroColor"])}; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:anywhere; }
 .front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-title { font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-entry { display:flex; justify-content:space-between; align-items:baseline; line-height:${P.entrySpacing}; margin:0; }
@@ -591,7 +664,7 @@ function buildCSS(){
 .img-frame img { display:block; position:relative; z-index:1; }
 .img-block { position:absolute; z-index:0; }
 .img-line { position:absolute; z-index:2; overflow:visible; }
-.img-caption { font-family:${fontStack(P.fBody)}; font-size:${P.captionSize}pt; font-weight:bold; text-align:center; margin:0; }
+.img-caption { font-family:${fontStack(P.fBody)}; font-size:${P.captionSize}pt; font-weight:normal; text-align:center; text-indent:0; letter-spacing:normal; line-height:1.6; white-space:normal; overflow-wrap:anywhere; margin:0; }
 `;
 }
 
@@ -625,15 +698,14 @@ function renderImage(path, caption){
   if(caption){
     const gap = ptmm(P.imgLineGap);
     if(P.imgLineOn){
-      const capWmm = caption.length * P.captionSize * 0.3528;
-      let lineEnd = Math.max(ptmm(12), (wmm - capWmm)/2 - ptmm(4));
-      const svg = `<svg class="img-line" style="left:0;top:${hmm.toFixed(2)}mm;width:${wmm.toFixed(2)}mm;height:${(gap+1).toFixed(2)}mm;" viewBox="0 0 ${wmm.toFixed(2)} ${(gap+1).toFixed(2)}" preserveAspectRatio="none"><polyline points="0,0 0,${gap.toFixed(2)} ${lineEnd.toFixed(2)},${gap.toFixed(2)}" fill="none" stroke="#000000" stroke-width="0.75"/></svg>`;
-      capHtml = svg + `<div class="img-caption" style="padding-top:${gap.toFixed(2)}mm;">${esc(caption)}</div>`;
+      const lineEnd = Math.min(ptmm(12), wmm);
+      const svg = `<svg class="img-line" style="position:relative;display:block;left:0;top:0;width:${wmm.toFixed(2)}mm;height:${(gap+1).toFixed(2)}mm;" viewBox="0 0 ${wmm.toFixed(2)} ${(gap+1).toFixed(2)}" preserveAspectRatio="none"><polyline points="0,0 0,${gap.toFixed(2)} ${lineEnd.toFixed(2)},${gap.toFixed(2)}" fill="none" stroke="#000000" stroke-width="0.75"/></svg>`;
+      capHtml = svg + `<div class="img-caption" style="padding-top:8pt;line-height:1.6;overflow-wrap:anywhere;">${esc(caption)}</div>`;
     } else {
-      capHtml = `<div class="img-caption" style="padding-top:4pt;">${esc(caption)}</div>`;
+      capHtml = `<div class="img-caption" style="padding-top:4pt;line-height:1.6;overflow-wrap:anywhere;">${esc(caption)}</div>`;
     }
   }
-  return `<div class="img-unit"><div class="img-frame">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div></div>`;
+  return `<div class="img-unit"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div></div>`;
 }
 function renderItems(items){
   const out = [];
@@ -691,7 +763,6 @@ function renderTocEntry(text, key, size, bold, indentPt){
 }
 function renderReferenceToc(data){
   let html=`<div class="toc toc-reference"><div class="toc-title">${esc(P.tocTitle)}<span class="toc-english">Content</span></div>`;
-  if(data.prefaceTitle) html+=`<div class="toc-front-entry">${esc(data.prefaceTitle)}</div>`;
   data.chapters.forEach((chapter,ci)=>{
     if(chapter.title!=null) html+=`<div class="toc-section-title">${esc(chapter.title)}</div>`;
     chapter.articles.forEach((article,ai)=>{
@@ -704,6 +775,11 @@ function renderReferenceToc(data){
 function renderBook(){
   const d = parsedData;
   const out = []; let firstEl = true;
+  if(P.titlePageOn){
+    const titleText=P.titlePageText || (P.titlePageFromSource?d.titlePageText:"");
+    out.push(`<div class="title-page"><div class="title-page-name">${esc(P.titlePageTitle || (P.titlePageFromSource && d.titlePageTitle) || BOOK_NAME)}</div>${P.titlePageAuthor?`<div class="title-page-author">${esc(P.titlePageAuthor)}</div>`:""}${titleText?`<div class="title-page-text">${titleText.split("\n").filter(t=>t.trim()).map(renderPara).join("")}</div>`:""}</div>`);
+    firstEl=false;
+  }
   if(d.preface != null){
     out.push(`<div class="front-wrap${firstEl?"":" break-page"}">` + renderFront(d.prefaceTitle, d.preface, "preface") + `</div>`);
     firstEl = false;
@@ -714,7 +790,6 @@ function renderBook(){
   } else {
   tocHtml = `<div class="toc-wrap${firstEl?"":" break-page"}"><div class="toc">`;
   tocHtml += `<div class="toc-title">${esc(P.tocTitle)}</div>`;
-  if(d.prefaceTitle) tocHtml += renderTocEntry(d.prefaceTitle, null, P.chapterTocSize, P.chapterTocBold, 0);
   let tci = 0;
   for(const ch of d.chapters){
     if(ch.title != null) tocHtml += renderTocEntry(ch.title, "c"+tci+"_0", P.chapterTocSize, P.chapterTocBold, 0);
@@ -770,9 +845,30 @@ function renderBook(){
 const pagesEl = document.getElementById("pages");
 const bookContent = document.getElementById("bookContent");
 
+function estimateSpine(pages, thickness, extra=0, multiple=2, allowance=0){
+  if(!Number.isFinite(thickness)||thickness<=0||!Number.isFinite(allowance)||allowance<0||!Number.isFinite(extra)||extra<0) return null;
+  const printedPages=Math.ceil((pages+Math.ceil(extra))/multiple)*multiple;
+  return {printedPages,sheets:printedPages/2,width:printedPages/2*thickness+allowance};
+}
+function updateSpineEstimate(){
+  const pages=pagesEl.querySelectorAll('.pagedjs_page').length;
+  const output=document.getElementById('spineResult'),status=document.getElementById('stSpine');
+  if(!pages){if(output)output.textContent='导入书稿并完成排版后自动计算。';if(status)status.textContent='';return;}
+  const result=estimateSpine(pages,Number(P.spinePaperThickness),Number(P.spineExtraPages),parseInt(P.spinePageMultiple)||2,Number(P.spineAllowance));
+  const text=result?`书脊估算 ${result.width.toFixed(2)} mm`:'请填写有效的纸厚和附加厚度';
+  if(output)output.textContent=result?`${text}（预览 ${pages} 页 → 印刷 ${result.printedPages} 页 / ${result.sheets} 张纸）`:text;
+  if(status)status.textContent=text;
+}
+let renderedBook=null, renderedParams="";
 let renderTask=Promise.resolve();
 function renderAll(){
-  renderTask=renderTask.catch(()=>{}).then(()=>renderBookPreview());
+  renderTask=renderTask.catch(()=>{}).then(async()=>{
+    const key=JSON.stringify(P,(key,value)=>key.startsWith("spine")?undefined:value);
+    if(renderedBook===parsedData && renderedParams===key && pagesEl.querySelector('.pagedjs_sheet')) return;
+    renderedBook=null;
+    await renderBookPreview();
+    if(!document.getElementById('stInfo').textContent.startsWith('排版出错')){renderedBook=parsedData;renderedParams=key;}
+  });
   return renderTask;
 }
 async function renderBookPreview(){
@@ -815,6 +911,7 @@ function postProcess(){
   pages.forEach((pg,i)=> decoratePage(pg, i, bodyStart));
   document.getElementById("stInfo").textContent = `共 ${pages.length} 页 · 正文从第 ${Math.max(0,bodyStart+1)} 页起`;
   document.getElementById("stPage").textContent = `正文 ${Object.keys(titlePage).length} 项已标页`;
+  updateSpineEstimate();
 }
 function pageIsRight(pg){ return pg.classList.contains("pagedjs_right_page") || pg.classList.contains("pagedjs_first_page"); }
 function decoratePage(pg, i, bodyStart){
@@ -835,8 +932,8 @@ function decoratePage(pg, i, bodyStart){
       if(layout){
         sheet.appendChild(layout);
         const intro=layout.querySelector(".chap4-intro");
-        if(intro){
-          let size=Number(P.introSize);
+        if(intro && P.chapterIntroAutoFit){
+          let size=Number(P[isChap5()?"chapter5IntroSize":"chapter4IntroSize"]);
           while(size>6 && (intro.scrollWidth>intro.clientWidth+1 || intro.scrollHeight>intro.clientHeight+1)){
             size-=.5; intro.style.fontSize=size+"pt";
           }
@@ -957,8 +1054,9 @@ async function exportPDF(){
   if(exportingPDF || !parsedData) return;
   exportingPDF=true;
   const button=document.getElementById("exportPdf");
-  const controls=[...document.querySelectorAll("#toolbar button, #panel input, #panel select, #fileInput")];
+  const controls=[...document.querySelectorAll("#toolbar button, #panel input, #panel select, #panel textarea, #fileInput")];
   const previous=controls.map(el=>el.disabled);
+  const fast=document.getElementById("pdfQuality").value==="fast";
   const oldLabel=button.textContent;
   controls.forEach(el=>el.disabled=true);
   let downloadURL=null, exportPage=0;
@@ -981,18 +1079,18 @@ async function exportPDF(){
       exportPage=i+1;
       button.textContent=`导出中 ${i+1}/${sheets.length}`;
       document.getElementById("stInfo").textContent=`正在生成 PDF：${i+1} / ${sheets.length} 页`;
-      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      await new Promise(resolve=>requestAnimationFrame(resolve));
       const sheet=sheets[i];
       await Promise.all([...sheet.querySelectorAll("img")].map(im=>im.decode()));
       // Export each sheet separately; UI scroll position and preview zoom do not
       // change its physical dimensions. Sequential canvases limit peak memory.
       const canvas=await htmlToImage.toCanvas(sheet,{
-        width:sheet.offsetWidth,height:sheet.offsetHeight,pixelRatio:300/96,
+        width:sheet.offsetWidth,height:sheet.offsetHeight,pixelRatio:(fast?150:300)/96,
         backgroundColor:getComputedStyle(sheet).backgroundColor,skipFonts:true,
         style:{margin:"0",transform:"none",zoom:"1",boxShadow:"none",isolation:"isolate",position:"relative",zIndex:"0"}
       });
-      const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("页面图像生成失败")),"image/png"));
-      const image=await pdf.embedPng(await blob.arrayBuffer());
+      const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("页面图像生成失败")),fast?"image/jpeg":"image/png",.95));
+      const image=fast?await pdf.embedJpg(await blob.arrayBuffer()):await pdf.embedPng(await blob.arrayBuffer());
       pdf.addPage([widthPt,heightPt]).drawImage(image,{x:0,y:0,width:widthPt,height:heightPt});
       canvas.width=canvas.height=1;
     }
@@ -1029,6 +1127,18 @@ document.getElementById("zoomIn").addEventListener("click", ()=>{ zoom = Math.mi
 document.getElementById("zoomOut").addEventListener("click", ()=>{ zoom = Math.max(0.3, zoom-0.1); applyZoom(); });
 
 buildForm();
+document.getElementById('settingsNav').innerHTML=SETTING_SECTIONS.map((section,index)=>`<button type="button" data-section="${index}">${section.title}</button>`).join('');
+document.getElementById('settingsNav').addEventListener('click',event=>{
+  const button=event.target.closest('button[data-section]');if(!button)return;
+  document.getElementById('settingSearch').value='';filterSettings();
+  const section=SETTING_SECTIONS[Number(button.dataset.section)];
+  formHost.querySelectorAll('.group-title').forEach(h=>{
+    const open=section.groups.includes(h.dataset.g);
+    h.nextElementSibling.classList.toggle('collapsed',!open);
+    h.querySelector('button').setAttribute('aria-expanded',open);
+  });
+  document.getElementById('settings_section_'+button.dataset.section).scrollIntoView({behavior:'smooth',block:'start'});
+});
 function filterSettings(){
   const query=document.getElementById("settingSearch").value.trim().toLowerCase();
   let matches=0;
@@ -1042,6 +1152,9 @@ function filterSettings(){
     h.hidden=body.hidden=!count; matches+=count;
     if(query && count) body.classList.remove("collapsed");
     h.querySelector("button").setAttribute("aria-expanded",!body.classList.contains("collapsed"));
+  });
+  formHost.querySelectorAll('.settings-section').forEach((heading,index)=>{
+    heading.hidden=!SETTING_SECTIONS[index].groups.some(title=>[...formHost.querySelectorAll('.group-title')].some(group=>group.dataset.g===title&&!group.hidden));
   });
   document.getElementById("noSettings").hidden=matches>0;
 }
