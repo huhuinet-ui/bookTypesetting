@@ -152,7 +152,7 @@ def convert(src, out=None, bracket_subtitle=None):
                 bm = BRACKET_SUB_RE.match(t)
                 if bm:
                     t = bm.group(1).strip()
-            if level == 4 and re.split(r"[:：\s—–-]+", t.rstrip("。：:"), maxsplit=1)[0] in PREFACE_KEYS:
+            if level == 4 and any(t.startswith(key) for key in PREFACE_KEYS):
                 lines.append(f"# {t}")
             else:
                 lines.append(f"{'#' * level} {t}")

@@ -22,6 +22,7 @@ def main():
     full.book.IMG_LEADER_LENGTH = max(0, min(120, float(p.get("imgLeaderLength", 30))))
     full.book.IMG_AFTER = max(0, min(60, float(p.get("imgAfter", 6))))
     full.book.IMG_ALLOW_UPSCALE = bool(p.get("imgAllowUpscale", False))
+    full.book.F_BODY_ALT = str(p.get("fBodyAlt", "方正楷体_GBK"))
     full.book.MARK_MODE = "bold" if p.get("markMode") == "保留加粗" else "color"
     full.book.MARK_COLOR_ON = True
     full.book.MARK_COLOR = RGBColor.from_string(str(p.get("markTargetColor", p.get("bookColor", "#DEB887"))).lstrip("#"))

@@ -4,6 +4,27 @@ import re
 from docx.oxml import parse_xml
 from docx.shared import Pt
 
+def wrap_vertical_intro(text, capacity):
+    """Plan vertical columns without single-character tails or stranded punctuation."""
+    closing=set("，。！？；：、,.!?;:）)】〕］〉》」』”’…")
+    opening=set("（(【〔［〈《「『“‘")
+    result=[]
+    for paragraph in str(text).split("\n"):
+        remaining=paragraph.strip()
+        if not remaining:
+            result.append("");continue
+        while len(remaining)>capacity:
+            end=capacity
+            while end>2 and (remaining[end] in closing or remaining[end-1] in opening):end-=1
+            tail=remaining[end:]
+            if len(tail.rstrip("".join(closing)))<2:
+                end=max(2,end-(2-len(tail.rstrip("".join(closing)))))
+                while end>1 and (remaining[end] in closing or remaining[end-1] in opening):end-=1
+            result.append(remaining[:end]);remaining=remaining[end:]
+        result.append(remaining)
+    return "\n".join(result)
+
+
 def install_chapters(full, params, artwork):
     book=full.book
     style=str(params.get('chapterStyle',''))
@@ -51,7 +72,7 @@ def install_chapters(full, params, artwork):
                     if preserve_spaces:
                         line=line.replace(" ", "\u00a0").replace("\t", "\u00a0")
                     character_spacing=f'<w:spacing w:val="{round(letter_spacing*20)}"/>'
-                    lines.append(f'<w:p><w:pPr><w:jc w:val="{alignment}"/><w:spacing w:before="0" w:after="0" w:line="{round(size*1.6*20)}" w:lineRule="atLeast"/><w:snapToGrid w:val="0"/>{paragraph_border}{direction}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font or book.F_CHAPTER_TITLE,quote=True)}"/><w:color w:val="{color.lstrip("#")}"/><w:sz w:val="{round(size*2)}"/>{character_spacing}</w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>')
+                    lines.append(f'<w:p><w:pPr><w:jc w:val="{alignment}"/><w:spacing w:before="0" w:after="0" w:line="{round(size*1.6*20)}" w:lineRule="atLeast"/><w:snapToGrid w:val="0"/><w:kinsoku w:val="1"/><w:widowControl w:val="1"/>{paragraph_border}{direction}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font or book.F_CHAPTER_TITLE,quote=True)}"/><w:color w:val="{color.lstrip("#")}"/><w:sz w:val="{round(size*2)}"/>{character_spacing}</w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>')
                 xml+=f'<v:textbox{textbox_style} inset="0,0,0,0"><w:txbxContent>{"".join(lines)}</w:txbxContent></v:textbox>'
             xml+='</v:rect></w:pict>'
             paragraph.add_run()._r.append(parse_xml(xml))
@@ -69,5 +90,5 @@ def install_chapters(full, params, artwork):
             title_size=params.get(prefix+'TitleSize',21)
             shape(W*.24,H*.29,W*.58,title_size*1.6+12,name,font=book.F_CHAPTER_TITLE,size=title_size,color=params.get(prefix+'TitleColor','#20251c'),underline=True)
             if artwork:shape(W*.70,H*.43,W*.13,H*.09,image=artwork[0])
-            if intro:shape(W*.44,H*.63,W*.38,H*.24,intro,font=book.F_CHAPTER_INTRO,size=params.get(prefix+'IntroSize',10),color=params.get(prefix+'IntroColor','#20251c'),vertical=True)
+            if intro:shape(W*.44,H*.63,W*.38,H*.24,wrap_vertical_intro(intro,max(3,int(H*.24/(params.get(prefix+'IntroSize',10)+1))-1)),font=book.F_CHAPTER_INTRO,size=params.get(prefix+'IntroSize',10),color=params.get(prefix+'IntroColor','#20251c'),vertical=True)
     book.add_chapter_page=chapter

@@ -256,8 +256,10 @@ def add_anchor(p, token):
         R(p, token, cn=F_BODY, size=1, color=WHITE, af="Times New Roman")
 
 
-def R(p, text, cn=F_BODY, size=BODY_SIZE, color=BLACK, bold=False,
+def R(p, text, cn=None, size=None, color=BLACK, bold=False,
       underline=False, af="Times New Roman"):
+    if cn is None: cn = F_BODY
+    if size is None: size = BODY_SIZE
     r = p.add_run(text)
     r.font.name = af
     r.font.size = Pt(size)
@@ -268,12 +270,14 @@ def R(p, text, cn=F_BODY, size=BODY_SIZE, color=BLACK, bold=False,
     return r
 
 
-def add_body_para(p, text, cn=F_BODY, alt_cn=None, size=BODY_SIZE, alt_open=False):
+def add_body_para(p, text, cn=None, alt_cn=None, size=None, alt_open=False):
     """渲染正文段落，支持两种行内标记（可叠加）：
        **文字**  → 着色（颜色见 MARK_COLOR_ON / MARK_COLOR，只上色不加粗）
        {{文字}}  → 改用特殊字体 alt_cn（默认取 F_BODY_ALT）
     alt_open=True 表示进入本段时特殊字体已开启（供连续多段的块标记续接）。
     返回段末的特殊字体开关状态，供下一段继承。"""
+    if cn is None: cn = F_BODY
+    if size is None: size = BODY_SIZE
     if alt_cn is None:
         alt_cn = F_BODY_ALT
     mark_color = (MARK_COLOR if MARK_COLOR is not None else BOOK_COLOR) if MARK_COLOR_ON else BLACK
@@ -840,7 +844,7 @@ def parse_book(src=None):
         # 前言/自序/序言/代序/写在前面 与 后记/跋（单 # 开头，且不是 ## 或 ### 或 ####）
         if s.startswith("# ") and not s.startswith("##"):
             kind = s.lstrip("#").strip()
-            heading_kind = re.split(r"[:：\s—–-]+", kind, maxsplit=1)[0]
+            heading_kind = next((key for key in PREFACE_KEYS + AFTERWORD_KEYS if kind.startswith(key)), re.split(r"[:：\s—–-]+", kind, maxsplit=1)[0])
             if heading_kind == "扉页" or (not chapters and preface_title is None and title_page_title is None and heading_kind not in PREFACE_KEYS + AFTERWORD_KEYS):
                 target = title_page
                 title_page_title = re.sub(r"^扉页\s*[:：]\s*", "", kind)

@@ -180,6 +180,7 @@ const GROUPS = [
    {k:"fChapterNumber",l:"章节序号字体",t:"font",d:"方正清刻本悦宋简体"},
    {k:"fChapterTitle",l:"章节名称字体",t:"font",d:"方正清刻本悦宋简体"},
    {k:"fChapterIntro",l:"章节引言字体",t:"font",d:"方正书宋_GBK"},
+   {k:"fBodyAlt",l:"{{特殊文字}}字体",t:"font",d:"方正楷体_GBK"},
    {k:"fHead",l:"页眉字体",t:"font",d:"方正清刻本悦宋简体"},
    {k:"fNum",l:"页码字体",t:"font",d:"方正楷体简体"},
  ]},
@@ -335,6 +336,7 @@ function buildForm(){
       }
     }
     if(g.title==="章节页（篇章页）") html+=`<div class="field wide"><small>版式二标题颜色自动跟随「书籍主色调」，无需单独设置。</small></div>`;
+    if(g.title==="字体") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">用 {{文字}} 标记特殊字体；单独一行 {{ 开始、}} 结束可标记多段正文。字号跟随正文，可与 **加粗／上色** 叠加。</small></div>`;
     if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">整组图片后留白：图注末尾到下一段文字或下一张图片的距离；不控制图片与图注之间的距离。1 pt ≈ 0.35 mm，6 pt 约为 2.1 mm。</small></div>`;
     if(g.title==="前言 / 后记") html+=`<div class="field wide"><label>前言、后记正文字号</label><output id="frontBodySizeInfo">${P.bodySize} pt（与文章正文一致，默认 9 pt）</output><small>在「正文」分组调整共用正文字号。</small></div>`;
     if(g.title==="书脊宽度") html+=`<div class="field wide"><output id="spineResult" aria-live="polite">导入书稿并完成排版后自动计算。</output><small style="line-height:1.8;color:#718278">估算公式：补齐后内文页数 ÷ 2 × 单张纸厚度 ＋ 装订附加厚度。纸厚默认 0.1 mm 仅作示例，请按实际纸张或印厂数据填写；不包含封面纸、精装书壳。结果依据网页总页数，Word 分页不同需按其实际页数复核。</small></div>`;
@@ -428,10 +430,12 @@ function resolveImgPath(path){
 function classify(lines, poem){
   if(poem) return classifyPoem(lines);
   const ls = lines.map(cleanLine);
-  const items = []; const m = ls.length; let k = 0;
+  const items = []; const m = ls.length; let k = 0; let altBlock=false;
   while(k < m){
     const s = ls[k];
     if(!s){ k++; continue; }
+    if(s==="{{"){altBlock=true;k++;continue;}
+    if(s==="}}"){altBlock=false;k++;continue;}
     let sm = SUB_RE.exec(s);
     if(sm){ items.push(["h", sm[1].trim()]); k++; continue; }
     let im = IMG_RE.exec(s);
@@ -442,6 +446,8 @@ function classify(lines, poem){
     }
     let mdim = MD_IMG_RE.exec(s);
     if(mdim){ items.push(["img", {path:mdim[2].trim(), caption:mdim[1].trim()||null}]); k++; continue; }
+    if(altBlock){items.push(["palt",s]);k++;continue;}
+    if(s.includes("{{")||s.includes("}}")){items.push(["p",s]);k++;continue;}
     const pb = (k===0 || !ls[k-1]);
     const nb = (k===m-1 || !ls[k+1]);
     if(/^\d{1,2}$/.test(s)) items.push(["num", s]);
@@ -482,7 +488,7 @@ function parseBook(srcText){
     if(s.startsWith("# ") && !s.startsWith("##")){
       const kind = s.replace(/^#+\s*/,"").trim();
       let target=null;
-      const headingKind=kind.split(/[:：\s—–-]+/,1)[0];
+      const headingKind=[...PREFACE_KEYS,...AFTERWORD_KEYS].find(key=>kind.startsWith(key)) || kind.split(/[:：\s—–-]+/,1)[0];
       if(headingKind==="扉页" || (!chapters.length && prefaceTitle===null && titlePageTitle===null && !PREFACE_KEYS.includes(headingKind) && !AFTERWORD_KEYS.includes(headingKind))){
         target=titlePageText;titlePageTitle=kind.replace(/^扉页\s*[:：]\s*/,"");
       }
@@ -620,6 +626,7 @@ function buildCSS(){
 .break-right { break-before: right; }
 .body,.article,.chapter-page,.front-page,.toc { font-family: ${fontStack(P.fBody)}; font-size: ${P.bodySize}pt; color:#000; }
 .para { text-align:justify; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; text-indent:${P.bodyIndent}em; ${widow} ${keep} }
+.body-alt { font-family:${fontStack(P.fBodyAlt)}; }
 .mark { color: ${markColor}; font-weight:${P.markMode==="保留加粗"?"bold":"normal"}; }
 .subtitle { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; font-weight:${P.subtitleBold?"bold":"normal"}; break-after:avoid; }
 .num-line { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; }
@@ -645,7 +652,7 @@ function buildCSS(){
 .chap4-heading { position:absolute; right:18%; top:29%; max-width:66%; text-align:right; }
 .chap4-title { display:inline-block; font-family:${fontStack(P.fChapterTitle)}; font-size:${P[isChap5()?"chapter5TitleSize":"chapter4TitleSize"]}pt; color:${hexColor(P[isChap5()?"chapter5TitleColor":"chapter4TitleColor"])}; line-height:1.4; overflow-wrap:anywhere; text-align:left; padding-bottom:5pt; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; }
 .chap4-rose { position:absolute; right:17%; top:43%; width:13%; height:9%; }
-.chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fChapterIntro)}; font-size:${P[isChap5()?"chapter5IntroSize":"chapter4IntroSize"]}pt; color:${hexColor(P[isChap5()?"chapter5IntroColor":"chapter4IntroColor"])}; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:anywhere; }
+.chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fChapterIntro)}; font-size:${P[isChap5()?"chapter5IntroSize":"chapter4IntroSize"]}pt; color:${hexColor(P[isChap5()?"chapter5IntroColor":"chapter4IntroColor"])}; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:normal; word-break:normal; line-break:strict; text-wrap:pretty; }
 .front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-title { font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-entry { display:flex; justify-content:space-between; align-items:baseline; line-height:${P.entrySpacing}; margin:0; }
@@ -674,10 +681,18 @@ function buildCSS(){
 `;
 }
 
-function renderPara(text){
-  const segs = text.split("**");
-  let inner = "";
-  segs.forEach((seg,i)=>{ if(!seg) return; inner += (i%2===1) ? `<span class="mark">${esc(seg)}</span>` : esc(seg); });
+function renderPara(text, forceAlt=false){
+  let marked=false,alt=forceAlt,inner="";
+  for(const token of String(text).split(/(\*\*|\{\{|\}\})/)){
+    if(token==="**"){marked=!marked;continue;}
+    if(token==="{{"){alt=true;continue;}
+    if(token==="}}"){alt=false;continue;}
+    if(!token)continue;
+    let fragment=esc(token);
+    if(alt)fragment=`<span class="body-alt">${fragment}</span>`;
+    if(marked)fragment=`<span class="mark">${fragment}</span>`;
+    inner+=fragment;
+  }
   return `<div class="para">${inner}</div>`;
 }
 function normalizeCaption(text){
@@ -740,7 +755,7 @@ function renderItems(items){
     if(kind==="img") out.push(renderImage(val.path, val.caption));
     else if(kind==="h") out.push(`<div class="subtitle">${esc(val)}</div>`);
     else if(kind==="num") out.push(`<div class="num-line">${esc(val)}</div>`);
-    else out.push(renderPara(val));
+    else out.push(renderPara(val,kind==="palt"));
   }
   return out.join("\n");
 }
@@ -803,7 +818,7 @@ function renderBook(){
   const out = []; let firstEl = true;
   if(P.titlePageOn){
     const titleText=P.titlePageText || (P.titlePageFromSource?d.titlePageText:"");
-    out.push(`<div class="title-page"><div class="title-page-name">${esc(P.titlePageTitle || (P.titlePageFromSource && d.titlePageTitle) || BOOK_NAME)}</div>${P.titlePageAuthor?`<div class="title-page-author">${esc(P.titlePageAuthor)}</div>`:""}${titleText?`<div class="title-page-text">${titleText.split("\n").filter(t=>t.trim()).map(renderPara).join("")}</div>`:""}</div>`);
+    out.push(`<div class="title-page"><div class="title-page-name">${esc(P.titlePageTitle || (P.titlePageFromSource && d.titlePageTitle) || BOOK_NAME)}</div>${P.titlePageAuthor?`<div class="title-page-author">${esc(P.titlePageAuthor)}</div>`:""}${titleText?`<div class="title-page-text">${titleText.split("\n").filter(t=>t.trim()).map(text=>renderPara(text)).join("")}</div>`:""}</div>`);
     firstEl=false;
   }
   if(d.preface != null){
@@ -839,7 +854,7 @@ function renderBook(){
         const digits="零一二三四五六七八九";
         const n=ordinal<10?digits[ordinal]:ordinal<100?((ordinal<20?"":digits[Math.floor(ordinal/10)])+"十"+(ordinal%10?digits[ordinal%10]:"")):String(ordinal);
         const number=match?match[1]:"第"+n+"章", title=match&&match[2]?match[2]:ch.title;
-        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout"><div class="chap4-number">${esc(number)}</div><div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${esc(ch.intro)}</div>`:""}</div></div>`;
+        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout"><div class="chap4-number">${esc(number)}</div><div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
       } else if(isChap2()){
         cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
       } else {
