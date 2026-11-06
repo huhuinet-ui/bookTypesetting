@@ -206,7 +206,8 @@ const GROUPS = [
    {k:"bodyIndent",l:"首行缩进",t:"num",d:1.5,u:"字",s:0.1,min:0,max:10},
    {k:"bodyAfter",l:"段后间距",t:"num",d:19.5,u:"pt",s:0.5,min:0,max:60},
    {k:"bodyLine",l:"行距",t:"num",d:19.5,u:"pt",s:0.5,min:5,max:60},
-   {k:"markColorOn",l:"**标记**上色",t:"bool",d:true},
+   {k:"markMode",l:"Markdown 加粗文字处理",t:"select",d:"改为目标颜色（取消加粗）",opts:["保留加粗","改为目标颜色（取消加粗）"]},
+   {k:"markTargetColor",l:"加粗文字转换目标颜色",t:"color",d:"#DEB887"},
    {k:"widowControl",l:"孤行控制",t:"bool",d:true},
    {k:"keepTogether",l:"段中不分页",t:"bool",d:false},
    {k:"subtitleBold",l:"小标题加粗",t:"bool",d:1},
@@ -223,7 +224,6 @@ const GROUPS = [
    {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
    {k:"chapter2TitleSize",l:"版式2·标题字号",t:"num",d:18,u:"pt",s:0.5,min:5,max:96},
-   {k:"chapter2TitleColor",l:"版式2·标题颜色",t:"color",d:"#DEB887"},
    {k:"chapter4NumberSize",l:"版式3·章节序号字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4NumberColor",l:"版式3·章节序号颜色",t:"color",d:"#20251c"},
    {k:"chapter4TitleSize",l:"版式3·标题字号",t:"num",d:21.6,u:"pt",s:0.5,min:5,max:96},
@@ -245,12 +245,15 @@ const GROUPS = [
  { title:"插图", items:[
    {k:"imgStyle",l:"插图版式",t:"select",d:"装饰版式：色块与引线",opts:["装饰版式：色块与引线","简洁居中：图片与下方图注"]},
    {k:"captionSize",l:"图注字号",t:"num",d:8,u:"pt",s:0.5,min:5,max:20},
-   {k:"imgMaxWRatio",l:"最大宽度占比",t:"num",d:0.8,u:"",s:0.05,min:0.1,max:1},
+   {k:"imgMaxWRatio",l:"最大宽度占版心比例",t:"num",d:0.9,u:"",s:0.05,min:0.1,max:1},
+   {k:"imgAllowUpscale",l:"小图也按版心比例放大",t:"bool",d:false},
+   {k:"imgAfter",l:"整组图片后留白（含图注）",t:"num",d:6,u:"pt",s:1,min:0,max:60},
    {k:"imgBlockOn",l:"图片衬色块",t:"bool",d:true},
    {k:"imgBlockSize",l:"色块尺寸比例",t:"num",d:0.7,u:"",s:0.05,min:0.1,max:1.5},
    {k:"imgBlockExpose",l:"色块露出量",t:"num",d:6,u:"pt",s:0.5,min:0,max:60},
    {k:"imgLineOn",l:"图注引线",t:"bool",d:true},
-   {k:"imgLineGap",l:"图与图注空隙",t:"num",d:14,u:"pt",s:0.5,min:0,max:60},
+   {k:"imgLeaderLength",l:"L引线向下长度（图片底部至拐角）",t:"num",d:30,u:"pt",s:1,min:0,max:120},
+   {k:"imgLineGap",l:"简洁版式·图与图注空隙",t:"num",d:6,u:"pt",s:0.5,min:0,max:60},
  ]},
  { title:"诗歌排版", items:[
    {k:"poemTitleSize",l:"诗题字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
@@ -269,6 +272,7 @@ const GROUPS = [
  ]},
  { title:"目录", items:[
    {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码"]},
+   {k:"tocShowSequence",l:"版式2·显示文章序号",t:"bool",d:false},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
    {k:"tocEntrySize",l:"条目字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
@@ -330,6 +334,8 @@ function buildForm(){
         html += `<div class="field wide"><label>${it.l}</label><input type="text" id="f_${it.k}" value="${escAttr(val)}"></div>`;
       }
     }
+    if(g.title==="章节页（篇章页）") html+=`<div class="field wide"><small>版式二标题颜色自动跟随「书籍主色调」，无需单独设置。</small></div>`;
+    if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">整组图片后留白：图注末尾到下一段文字或下一张图片的距离；不控制图片与图注之间的距离。1 pt ≈ 0.35 mm，6 pt 约为 2.1 mm。</small></div>`;
     if(g.title==="前言 / 后记") html+=`<div class="field wide"><label>前言、后记正文字号</label><output id="frontBodySizeInfo">${P.bodySize} pt（与文章正文一致，默认 9 pt）</output><small>在「正文」分组调整共用正文字号。</small></div>`;
     if(g.title==="书脊宽度") html+=`<div class="field wide"><output id="spineResult" aria-live="polite">导入书稿并完成排版后自动计算。</output><small style="line-height:1.8;color:#718278">估算公式：补齐后内文页数 ÷ 2 × 单张纸厚度 ＋ 装订附加厚度。纸厚默认 0.1 mm 仅作示例，请按实际纸张或印厂数据填写；不包含封面纸、精装书壳。结果依据网页总页数，Word 分页不同需按其实际页数复核。</small></div>`;
     html += `</div>`;
@@ -595,7 +601,7 @@ function buildCSS(){
   const bleed = P.bleed;
   const W = P.pageW + 2*bleed, H = P.pageH + 2*bleed;
   const t = P.mTop+bleed, b = P.mBot+bleed, inner = P.mLeft+bleed, outer = P.mRight+bleed;
-  const markColor = P.markColorOn ? hexColor(P.bookColor) : "#000000";
+  const markColor = P.markMode==="保留加粗" ? "inherit" : hexColor(P.markTargetColor);
   const widow = P.widowControl ? "widows:2;orphans:2;" : "widows:1;orphans:1;";
   const keep = P.keepTogether ? "break-inside:avoid;" : "";
   return `
@@ -614,7 +620,7 @@ function buildCSS(){
 .break-right { break-before: right; }
 .body,.article,.chapter-page,.front-page,.toc { font-family: ${fontStack(P.fBody)}; font-size: ${P.bodySize}pt; color:#000; }
 .para { text-align:justify; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; text-indent:${P.bodyIndent}em; ${widow} ${keep} }
-.mark { color: ${markColor}; }
+.mark { color: ${markColor}; font-weight:${P.markMode==="保留加粗"?"bold":"normal"}; }
 .subtitle { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; font-weight:${P.subtitleBold?"bold":"normal"}; break-after:avoid; }
 .num-line { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; }
 .article-title { font-family:${fontStack(P.fTitle)}; font-size:${P.titleSize}pt; line-height:1.2; margin:0; }
@@ -630,7 +636,7 @@ function buildCSS(){
 .chapter-rule { height:0; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; width:${P.chapterRuleW}cm; margin:8pt auto 0 auto; }
 .chapter-intro { font-family:${fontStack(P.fChapterIntro)}; font-size:${P.introSize}pt; width:${P.introBoxW}cm; margin:14pt auto 0 auto; text-align:left; line-height:1.8; }
 .chapter-page.chap2 { text-align:center; }
-.chap2-title { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapter2TitleSize}pt; color:${hexColor(P.chapter2TitleColor)}; writing-mode:vertical-rl; text-orientation:upright; display:inline-block; line-height:1.15; letter-spacing:3pt; background:#fff; padding:4pt 2pt; margin-top:${mmpt(P.chapter2Top/100*P.pageH - (P.mTop+P.bleed)).toFixed(1)}pt; }
+.chap2-title { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapter2TitleSize}pt; color:${hexColor(P.bookColor)}; writing-mode:vertical-rl; text-orientation:upright; display:inline-block; line-height:1.15; letter-spacing:3pt; background:#fff; padding:4pt 2pt; margin-top:${mmpt(P.chapter2Top/100*P.pageH - (P.mTop+P.bleed)).toFixed(1)}pt; }
 .pagedjs_right_page .chap2-title, .pagedjs_first_page .chap2-title { transform:translateX(${((P.mRight-P.mLeft)/2).toFixed(2)}mm); }
 .pagedjs_left_page .chap2-title { transform:translateX(${((P.mLeft-P.mRight)/2).toFixed(2)}mm); }
 .chapter-page.chap4 { min-height:1pt; }
@@ -659,12 +665,12 @@ function buildCSS(){
 .poem-meta { font-size:${P.poemMetaSize}pt; text-align:center; margin:0 0 ${P.poemMetaAfter}pt 0; }
 .poem-line { font-size:${P.poemLineSize}pt; text-align:center; line-height:${P.poemLine}pt; margin:0; }
 .poem-stanza { height:${P.poemStanzaGap}pt; }
-.img-unit { text-align:center; margin:0 0 ${P.bodyAfter}pt 0; break-inside:avoid; }
-.img-frame { position:relative; display:inline-block; }
+.img-unit { text-align:center; margin:0; padding:0 0 ${P.imgAfter}pt; break-inside:avoid; line-height:0; }
+.img-frame { position:relative; display:inline-block; vertical-align:top; line-height:normal; }
 .img-frame img { display:block; position:relative; z-index:1; }
 .img-block { position:absolute; z-index:0; }
 .img-line { position:absolute; z-index:2; overflow:visible; }
-.img-caption { font-family:${fontStack(P.fBody)}; font-size:${P.captionSize}pt; font-weight:normal; text-align:center; text-indent:0; letter-spacing:normal; line-height:1.6; white-space:normal; overflow-wrap:anywhere; margin:0; }
+.img-caption { font-family:${fontStack(P.fBody)}; font-size:${P.captionSize}pt; font-weight:normal; text-align:center; text-indent:0; letter-spacing:0; word-spacing:0; font-kerning:none; font-variant-ligatures:none; font-stretch:normal; text-align-last:auto; text-justify:none; line-break:strict; line-height:1.6; white-space:normal; overflow-wrap:anywhere; margin:0; }
 `;
 }
 
@@ -674,18 +680,35 @@ function renderPara(text){
   segs.forEach((seg,i)=>{ if(!seg) return; inner += (i%2===1) ? `<span class="mark">${esc(seg)}</span>` : esc(seg); });
   return `<div class="para">${inner}</div>`;
 }
+function normalizeCaption(text){
+  return String(text).replace(/[\u200b\u200c\u200d\u2060\ufeff]/g,"").replace(/[\t\u00a0\u3000 ]+/g," ").trim();
+}
+function captionNoOrphans(text){
+  const chars=Array.from(normalizeCaption(text));
+  const closing=/[，。！？；：、,.!?;:%％）)】〕］〉》」』”’…]/u;
+  const opening=/[（(【〔［〈《「『“‘]/u;
+  const tail=Math.max(1,chars.length-3);
+  let groups=[],group="";
+  chars.forEach((c,i)=>{
+    if(i>0 && !(i>=tail || closing.test(c) || opening.test(chars[i-1]))){groups.push(group);group="";}
+    group+=c;
+  });
+  if(group)groups.push(group);
+  return groups.map(g=>Array.from(g).length>1?`<span style="white-space:nowrap;">${esc(g)}</span>`:esc(g)).join("");
+}
 function renderImage(path, caption){
   const info = imgInfo.get(path);
   if(!info){ return `<div class="para">［图片缺失：${esc(path)}］</div>`; }
   const pxPerMm = 96/25.4;
   const maxWmm = (P.pageW - P.mLeft - P.mRight) * P.imgMaxWRatio;
   const natWmm = info.w/pxPerMm;
-  const wmm = Math.min(natWmm, maxWmm);
+  const maxHmm=(P.pageH-P.mTop-P.mBot)*.82;
+  const wmm = Math.min(P.imgAllowUpscale?maxWmm:natWmm, maxWmm, maxHmm*info.w/info.h);
   const hmm = wmm * info.h/info.w;
   const url = info.url;
   if(P.imgStyle === "简洁居中：图片与下方图注"){
-    const cap = caption ? `<figcaption class="img-caption" style="padding-top:${P.imgLineGap}pt;font-weight:normal;overflow-wrap:anywhere;">${esc(caption)}</figcaption>` : "";
-    return `<figure class="img-unit"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}</figure>`;
+    const cap = caption ? `<figcaption class="img-caption" style="padding-top:${P.imgLineGap}pt;font-weight:normal;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</figcaption>` : "";
+    return `<figure class="img-unit" style="padding-bottom:${P.imgAfter}pt;"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}</figure>`;
   }
   let blockHtml = "";
   if(P.imgBlockOn){
@@ -698,14 +721,17 @@ function renderImage(path, caption){
   if(caption){
     const gap = ptmm(P.imgLineGap);
     if(P.imgLineOn){
-      const lineEnd = Math.min(ptmm(12), wmm);
-      const svg = `<svg class="img-line" style="position:relative;display:block;left:0;top:0;width:${wmm.toFixed(2)}mm;height:${(gap+1).toFixed(2)}mm;" viewBox="0 0 ${wmm.toFixed(2)} ${(gap+1).toFixed(2)}" preserveAspectRatio="none"><polyline points="0,0 0,${gap.toFixed(2)} ${lineEnd.toFixed(2)},${gap.toFixed(2)}" fill="none" stroke="#000000" stroke-width="0.75"/></svg>`;
-      capHtml = svg + `<div class="img-caption" style="padding-top:8pt;line-height:1.6;overflow-wrap:anywhere;">${esc(caption)}</div>`;
+      const lineEnd = Math.min(ptmm(12), wmm*.2);
+      const textStart=lineEnd+ptmm(P.captionSize);
+      const lineY=ptmm(P.imgLeaderLength);
+      const captionTop=ptmm(Math.max(0,P.imgLeaderLength-P.captionSize*.8));
+      const svg = `<svg aria-hidden="true" style="position:absolute;left:0;top:0;width:${textStart.toFixed(2)}mm;height:${(lineY+1).toFixed(2)}mm;overflow:visible;" viewBox="0 0 ${textStart.toFixed(2)} ${(lineY+1).toFixed(2)}"><polyline points="0,0 0,${lineY.toFixed(2)} ${lineEnd.toFixed(2)},${lineY.toFixed(2)}" fill="none" stroke="#000000" stroke-width="${ptmm(0.5).toFixed(4)}"/></svg>`;
+      capHtml = `<div class="img-caption-row" style="position:relative;padding-top:${captionTop.toFixed(2)}mm;padding-left:${textStart.toFixed(2)}mm;">${svg}<div class="img-caption" style="text-align:left;line-height:1.6;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</div></div>`;
     } else {
-      capHtml = `<div class="img-caption" style="padding-top:4pt;line-height:1.6;overflow-wrap:anywhere;">${esc(caption)}</div>`;
+      capHtml = `<div class="img-caption" style="padding-top:4pt;line-height:1.6;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</div>`;
     }
   }
-  return `<div class="img-unit"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div></div>`;
+  return `<div class="img-unit" style="padding-bottom:${P.imgAfter}pt;"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div></div>`;
 }
 function renderItems(items){
   const out = [];
@@ -767,7 +793,7 @@ function renderReferenceToc(data){
     if(chapter.title!=null) html+=`<div class="toc-section-title">${esc(chapter.title)}</div>`;
     chapter.articles.forEach((article,ai)=>{
       const digits=Math.max(3,Number(P.pad)||0),key=`a${ci}_${ai}`;
-      html+=`<div class="toc-reference-row"><span class="toc-sequence">${String(ai+1).padStart(2,"0")}</span><span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?`${esc(article.author)} / `:""}<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></span></div>`;
+      html+=`<div class="toc-reference-row">${P.tocShowSequence?`<span class="toc-sequence">${String(ai+1).padStart(2,"0")}</span>`:""}<span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?`${esc(article.author)} / `:""}<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></span></div>`;
     });
   });
   return html+"</div>";

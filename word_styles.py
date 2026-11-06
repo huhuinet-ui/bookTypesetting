@@ -48,9 +48,10 @@ def install_styles(full, params, artwork):
                     pf.keep_with_next=True
                     full.toc.R(p, chapter['title'], chapter_size, bold=full.CHAPTER_TOC_BOLD)
                 if not chapter['articles']: continue
-                table=doc.add_table(rows=0,cols=3);table.autofit=False
+                show_sequence=bool(params.get("tocShowSequence",False))
+                table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False
                 sequence_mm=23*scale*25.4/72
-                widths=[sequence_mm,width-sequence_mm-width*.34,width*.34]
+                widths=[sequence_mm,width-sequence_mm-width*.34,width*.34] if show_sequence else [width*.66,width*.34]
                 for column,w in zip(table.columns,widths):column.width=Mm(w)
                 props=table._tbl.tblPr
                 borders=OxmlElement('w:tblBorders')
@@ -69,9 +70,13 @@ def install_styles(full, params, artwork):
                         paragraph=cell.paragraphs[0];pf=paragraph.paragraph_format
                         pf.space_before=Pt(0);pf.space_after=Pt(0);pf.line_spacing=Pt(row_pitch)
                         snap=OxmlElement('w:snapToGrid');snap.set(qn('w:val'),'0');paragraph._p.get_or_add_pPr().append(snap)
-                    seq,titlep,meta=[cell.paragraphs[0] for cell in row.cells]
-                    run=seq.add_run(f'{index:02d}');run.font.name='Times New Roman'
-                    run.font.size=Pt(9*scale);run.bold=True;run.italic=True
+                    paragraphs=[cell.paragraphs[0] for cell in row.cells]
+                    if show_sequence:
+                        seq,titlep,meta=paragraphs
+                        run=seq.add_run(f'{index:02d}');run.font.name='Times New Roman'
+                        run.font.size=Pt(9*scale);run.bold=True;run.italic=True
+                    else:
+                        titlep,meta=paragraphs
                     full.toc.R(titlep,article['title'],row_size)
                     # Leave the same 8 pt breathing room as the preview's flex gap.
                     titlep.paragraph_format.right_indent=Pt(8)

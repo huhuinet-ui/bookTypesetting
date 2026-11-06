@@ -26,7 +26,7 @@ def install_chapters(full, params, artwork):
         paragraph.paragraph_format.space_after=Pt(0)
         paragraph.paragraph_format.line_spacing=Pt(1)
         book.add_anchor(paragraph,anchor)
-        def shape(x,y,w,h,text='',font=None,size=12,color='#20251c',vertical=False,border=None,image=None,fill=None,underline=False):
+        def shape(x,y,w,h,text='',font=None,size=12,color='#20251c',vertical=False,border=None,image=None,fill=None,underline=False,preserve_spaces=False,letter_spacing=0):
             ident=f'chapter_{ordinal[0]}_{len(paragraph.runs)}'
             attr=f'fillcolor="{html.escape(fill)}"' if fill else 'filled="f"'
             attr+=f' strokecolor="{html.escape(border)}" strokeweight="{params.get("chapterRulePt",1)}pt"' if border else ' stroked="f"'
@@ -46,7 +46,12 @@ def install_chapters(full, params, artwork):
                     textbox_style=' style="mso-fit-shape-to-text:t"'
                 lines=[]
                 for line in str(text).split('\n'):
-                    lines.append(f'<w:p><w:pPr><w:jc w:val="{alignment}"/><w:spacing w:before="0" w:after="0" w:line="{round(size*1.6*20)}" w:lineRule="atLeast"/><w:snapToGrid w:val="0"/>{paragraph_border}{direction}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font or book.F_CHAPTER_TITLE,quote=True)}"/><w:color w:val="{color.lstrip("#")}"/><w:sz w:val="{round(size*2)}"/></w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>')
+                    # Word's vertical VML layout can collapse ordinary spaces.
+                    # Explicit nonbreaking spaces retain the source separator.
+                    if preserve_spaces:
+                        line=line.replace(" ", "\u00a0").replace("\t", "\u00a0")
+                    character_spacing=f'<w:spacing w:val="{round(letter_spacing*20)}"/>'
+                    lines.append(f'<w:p><w:pPr><w:jc w:val="{alignment}"/><w:spacing w:before="0" w:after="0" w:line="{round(size*1.6*20)}" w:lineRule="atLeast"/><w:snapToGrid w:val="0"/>{paragraph_border}{direction}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font or book.F_CHAPTER_TITLE,quote=True)}"/><w:color w:val="{color.lstrip("#")}"/><w:sz w:val="{round(size*2)}"/>{character_spacing}</w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>')
                 xml+=f'<v:textbox{textbox_style} inset="0,0,0,0"><w:txbxContent>{"".join(lines)}</w:txbxContent></v:textbox>'
             xml+='</v:rect></w:pict>'
             paragraph.add_run()._r.append(parse_xml(xml))
@@ -55,7 +60,7 @@ def install_chapters(full, params, artwork):
             shape(inset,inset,W-2*inset,H-2*inset,border=params.get('bookColor','#DEB887'))
             if artwork:shape(0,0,W,H,image=artwork[0])
             size=params.get('chapter2TitleSize',18)
-            shape(W*.46,H*params.get('chapter2Top',40)/100,size*1.7,H*.52,title,size=size,color=params.get('chapter2TitleColor','#DEB887'),vertical=True,fill='#FFFFFF')
+            shape(W*.46,H*params.get('chapter2Top',40)/100,size*1.7,H*.52,title,size=size,color=params.get('bookColor','#DEB887'),vertical=True,fill='#FFFFFF',preserve_spaces=True,letter_spacing=3)
         else:
             match=re.match(r'^(第[一二三四五六七八九十百零〇两\d]+[章篇部卷])[\s　:：、.．—-]*(.*)$',title)
             number=match[1] if match else f'第{ordinal[0]}章'

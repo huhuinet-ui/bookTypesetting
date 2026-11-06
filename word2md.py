@@ -7,7 +7,7 @@
 - 按 Word 标题样式识别结构：标题3→### 章节、标题4→#### 文章、标题5→##### 小节
 - 「自序/前言/序」这类标题4 → # 前言
 - 图片自动提取到「图/」子文件夹，生成 ![图注](图/imgN.png)
-- 图注：图片下一段若为「图：xxx」「图1-1：xxx」或 Word 题注样式，自动取为图注
+- 图注：支持跳过图片后的空段落、同段说明及“图片说明：/图注：/图1：”等写法；下一段若为「图：xxx」「图1-1：xxx」或 Word 题注样式，自动取为图注
   （带编号的「图1-1：xxx」整行保留，含编号）
 - 兜底（样式丢失时）：加粗独立短段→文章标题；「数字.」开头独立短段→小节标题；
   这些靠猜的行会列在最后的「需人工核对」清单里
@@ -34,14 +34,40 @@ BRACKET_SUB_RE = re.compile(r"^【\s*(.+?)\s*】$")   # 整行形如【xxx】才
 #   带编号：图1-1：xxx / 图 1-1 xxx / 图2-6：xxx …… → 整行作为图注（保留编号）
 #   旧写法：图：xxx → 去掉「图：」前缀，取后面的说明
 #   另外，Word「题注」样式(Caption)的段落也直接当图注
-CAP_NUM_RE = re.compile(r"^图\s*\d+\s*[-－—–]\s*\d+.*$")
-CAP_PLAIN_RE = re.compile(r"^图\s*[:：]\s*(.+)$")
+CAP_NUM_RE = re.compile(r"^图\s*\d+(?:\s*[-－—–.]\s*\d+)*(?:\s*[:：、.．)）]\s*|\s+|(?=[^\d\s])).+$")
+CAP_PLAIN_RE = re.compile(r"^(?:图片说明|图注说明|图片名|图片|图注|图说|照片说明|说明|图)\s*[:：]\s*(.+)$")
 CAP_STYLE_RE = re.compile(r"题注|caption", re.I)
+
+
+def caption_text(para):
+    # Text in Word textboxes may be absent from Paragraph.text.
+    text = para.text.strip()
+    if not text:
+        text = "".join(node.text or "" for node in para._p.iter(qn("w:t"))).strip()
+    return text.replace("\u2060", "").replace("\ufeff", "")
+
+
+def find_caption(paras, index):
+    """Skip empty paragraphs, never cross an intervening table, heading or image."""
+    previous = paras[index]
+    for j in range(index+1, len(paras)):
+        candidate = paras[j]
+        if previous._p.getnext() is not candidate._p:
+            return None, index
+        if candidate._p.find(".//"+qn("a:blip")) is not None:
+            return None, index
+        if heading_level(candidate.style.name or ""):
+            return None, index
+        text = caption_text(candidate)
+        if text:
+            return match_caption(candidate), j
+        previous = candidate
+    return None, index
 
 
 def match_caption(para):
     """这一段是不是图注？是则返回图注文字，否则返回 None。"""
-    t = para.text.strip()
+    t = caption_text(para)
     if not t:
         return None
     if CAP_STYLE_RE.search(para.style.name or ""):
@@ -101,11 +127,15 @@ def convert(src, out=None, bracket_subtitle=None):
                 fn = f"img{img_no}.{ext}"
                 with open(os.path.join(img_dir, fn), "wb") as f:
                     f.write(part.blob)
-                caption = None
-                if i + 1 < n and paras[i + 1]._p.find(".//" + qn("a:blip")) is None:
-                    caption = match_caption(paras[i + 1])
+                # Prefer explicit same-paragraph caption; otherwise scan past blanks.
+                caption = match_caption(p) if text else None
+                if caption is None:
+                    caption, caption_index = find_caption(paras, i)
                     if caption is not None:
-                        i += 1
+                        i = caption_index
+                if text and caption is None:
+                    # Do not silently discard text that shares an image paragraph.
+                    lines.append(text)
                 lines.append(f"![{caption or ''}](图/{fn})")
             i += 1
             continue

@@ -129,6 +129,7 @@ BODY_LINE = 19.5
 # 行距（磅）：行与行之间固定 19.5 磅，约等于字号的 2 倍，行距较宽松。
 
 # ---- 正文标记着色（源文件里用 **文字** 包起来的部分）----
+MARK_MODE = "color"            # bold=保留加粗；color=取消加粗并改为目标颜色
 MARK_COLOR_ON = True
 # 开关：**文字** 标记的部分要不要上色（只上色、不加粗）。True=上色；False=不上色、保持黑色。
 MARK_COLOR = None
@@ -182,7 +183,9 @@ CAPTION_SIZE = 8
 # 图注字号（磅）：9 磅，居中加粗，放在图片正下方。
 IMAGE_MAX_W = None
 # 插图最大宽度（厘米）。None=自动用版心宽（=纸张宽-左右边距），超过会自动缩到该宽度。
-IMG_MAX_W_RATIO = 0.5
+IMG_AFTER = 6                 # 图片组独立段后距（磅）
+IMG_ALLOW_UPSCALE = False     # 是否允许小图放大
+IMG_MAX_W_RATIO = 0.9
 # 图片最大宽度占版心宽的比例（0~1）。改小图片会等比变小，一页能多放几张；1.0=占满版心宽。
 
 # ---- 插图装饰（图片底下衬色块 + 图注引线，参考《秀茹的一生》）----
@@ -198,7 +201,8 @@ IMG_LINE_ON = True
 # 开关：图注要不要用折线连到图片（引线）。True=有；False=没有。
 IMG_LINE_COLOR = None
 # 引线颜色。None=黑色；想自定义就写 RGBColor(红,绿,蓝)。
-IMG_LINE_GAP = 14
+IMG_LEADER_LENGTH = 30        # 图片底部至 L 形拐角的竖线长度（磅）
+IMG_LINE_GAP = 6
 # 图片和图注之间的空隙（磅）：引线竖线就画在这段空隙里，图注会跟着往下移。
 
 # ---- 诗歌排版（源文件里用「诗歌：」标记整篇为诗歌）----
@@ -278,7 +282,8 @@ def add_body_para(p, text, cn=F_BODY, alt_cn=None, size=BODY_SIZE, alt_open=Fals
     def flush():
         if buf:
             R(p, "".join(buf), cn=(alt_cn if alt else cn), size=size,
-              color=(mark_color if colored else BLACK))
+              color=(mark_color if colored and MARK_MODE == "color" else BLACK),
+              bold=(colored and MARK_MODE == "bold"))
             buf.clear()
 
     for tok in _MARK_TOKEN_RE.split(text):
@@ -544,11 +549,11 @@ def _img_line(p, left_pt, y0, y1, x_end, color_hex):
            f'<v:line id="imgline" from="{left_pt:.1f}pt,{y0:.1f}pt" to="{left_pt:.1f}pt,{y1:.1f}pt" '
            f'style="position:absolute;z-index:251658240;'
            'mso-position-horizontal-relative:margin;mso-position-vertical-relative:paragraph" '
-           f'strokecolor="#{color_hex}" strokeweight="0.75pt"/>'
+           f'strokecolor="#{color_hex}" strokeweight="0.5pt"/>'
            f'<v:line id="imgline2" from="{left_pt:.1f}pt,{y1:.1f}pt" to="{x_end:.1f}pt,{y1:.1f}pt" '
            f'style="position:absolute;z-index:251658240;'
            'mso-position-horizontal-relative:margin;mso-position-vertical-relative:paragraph" '
-           f'strokecolor="#{color_hex}" strokeweight="0.75pt"/>'
+           f'strokecolor="#{color_hex}" strokeweight="0.5pt"/>'
            '</w:pict>')
     run = p.add_run()
     run._r.append(parse_xml(vml))
@@ -567,7 +572,9 @@ def image_layout_size(path, max_width_cm):
         native_cm = px_w / dpi_x * 2.54
     except Exception:
         native_cm = None
-    w_cm = native_cm if (native_cm is not None and native_cm <= max_width_cm) else max_width_cm
+    w_cm = native_cm if (not IMG_ALLOW_UPSCALE and native_cm is not None and native_cm <= max_width_cm) else max_width_cm
+    if px_w and px_h:
+        w_cm = min(w_cm, (PAGE_H-M_TOP-M_BOT)*.82/10 * px_w/px_h)
     w_pt = w_cm * 28.3465
     h_pt = w_pt * (px_h / px_w) if (px_w and px_h) else w_pt * 0.75
     return w_cm, w_pt, h_pt
@@ -576,13 +583,44 @@ def image_layout_size(path, max_width_cm):
 def image_total_height(path, caption, max_width_cm):
     """一张图（图 + 图注 + 段距）在正文里占的总高度（磅），用于判断一页能放几张。"""
     _, w_pt, h_pt = image_layout_size(path, max_width_cm)
-    extra = BODY_AFTER
+    extra = IMG_AFTER
     if caption:
-        lines = max(1, math.ceil(len(caption) * CAPTION_SIZE / max(1, w_pt)))
+        caption_width = w_pt - (min(12, w_pt*.2) + CAPTION_SIZE if IMG_LINE_ON else 0)
+        lines = max(1, math.ceil(len(caption) * CAPTION_SIZE / max(1, caption_width)))
         extra += lines * CAPTION_SIZE * 1.6
         if IMG_LINE_ON:
-            extra += IMG_LINE_GAP + 8
+            extra += max(0, IMG_LEADER_LENGTH-CAPTION_SIZE*.8)
     return h_pt + extra
+
+
+def add_caption_run(paragraph, text):
+    """Give captions explicit natural spacing, independent of document defaults."""
+    ppr = paragraph._p.get_or_add_pPr()
+    for name in ("autoSpaceDE", "autoSpaceDN", "adjustRightInd", "snapToGrid"):
+        element = OxmlElement("w:" + name)
+        element.set(qn("w:val"), "0")
+        ppr.append(element)
+    run = R(paragraph, text, cn=F_BODY, size=CAPTION_SIZE)
+    rpr = run._r.get_or_add_rPr()
+    fonts = rpr.rFonts
+    for name in ("ascii", "hAnsi", "eastAsia", "cs"):
+        fonts.set(qn("w:"+name), F_BODY)
+    for name in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"):
+        fonts.attrib.pop(qn("w:"+name), None)
+    for name, value in (("spacing", "0"), ("w", "100"), ("kern", "0"), ("snapToGrid", "0")):
+        element = OxmlElement("w:" + name)
+        element.set(qn("w:val"), value)
+        rpr.append(element)
+    return run
+
+
+def caption_no_orphans(text):
+    """Keep plain caption text; native Word kinsoku handles punctuation wrapping.
+
+    Invisible joiners can trigger fallback fonts and uneven glyph spacing.
+    """
+    text = re.sub(r"[\u200b\u200c\u200d\u2060\ufeff]", "", str(text))
+    return re.sub(r"[\t\u00a0\u3000 ]+", " ", text).strip()
 
 
 def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
@@ -594,6 +632,8 @@ def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
     w_cm, w_pt, h_pt = image_layout_size(path, max_width_cm)
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 0, 1.0)
+    p.paragraph_format.keep_together = False
+    p.paragraph_format.keep_with_next = False
     if page_break:
         p.paragraph_format.page_break_before = True
     r = p.add_run()
@@ -605,29 +645,41 @@ def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
                    str(IMG_BLOCK_COLOR) if IMG_BLOCK_COLOR else str(BOOK_COLOR))
 
     if caption:
+        caption = caption_no_orphans(caption)
         p.paragraph_format.keep_with_next = True   # 图片与图注同页，不分开
         if IMG_LINE_ON:
-            # Keep the leader above the caption, independent of its length.
-            line_end = left_pt + min(12, w_pt)
-            leader = doc.add_paragraph()
-            set_para(leader, CENTER, 0, 0, max(1.01, IMG_LINE_GAP + 8))
-            leader.paragraph_format.keep_with_next = True
-            _img_line(leader, left_pt, 0, IMG_LINE_GAP, line_end,
-                      str(IMG_LINE_COLOR) if IMG_LINE_COLOR else "000000")
+            # Fixed leader column plus one em gap; continuation lines align with text.
+            short_line = min(12, w_pt * 0.2)
+            text_start = left_pt + short_line + CAPTION_SIZE
             pc = doc.add_paragraph()
-            set_para(pc, CENTER, 0, BODY_AFTER, max(1.01, CAPTION_SIZE * 1.6))
-            pc.paragraph_format.space_before = Pt(0)   # 引线已有独立占位段落，不与图注共享空间
-            pc.paragraph_format.left_indent = Pt(left_pt)
+            set_para(pc, LEFT, max(0, IMG_LEADER_LENGTH-CAPTION_SIZE*.8), IMG_AFTER, max(1.01, CAPTION_SIZE * 1.6))
+            pc.paragraph_format.keep_with_next = False
+            pc.paragraph_format.keep_together = False
+            pc.paragraph_format.left_indent = Pt(text_start)
             pc.paragraph_format.right_indent = Pt(left_pt)
-            R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
+            pc.paragraph_format.first_line_indent = Pt(0)
+            # Anchor to the image paragraph with nonnegative coordinates. Word
+            # may normalize negative endpoints on a caption-anchored VML line.
+            _img_line(p, left_pt, h_pt, h_pt + IMG_LEADER_LENGTH,
+                      left_pt + short_line,
+                      str(IMG_LINE_COLOR) if IMG_LINE_COLOR else "000000")
+            kinsoku=OxmlElement("w:kinsoku");kinsoku.set(qn("w:val"),"1")
+            pc._p.get_or_add_pPr().append(kinsoku)
+            pc.paragraph_format.widow_control=True
+            add_caption_run(pc, caption)
         else:
             pc = doc.add_paragraph()
-            set_para(pc, CENTER, 0, BODY_AFTER, max(1.01, CAPTION_SIZE * 1.6))
+            set_para(pc, CENTER, 0, IMG_AFTER, max(1.01, CAPTION_SIZE * 1.6))
+            pc.paragraph_format.keep_with_next = False
+            pc.paragraph_format.keep_together = False
             pc.paragraph_format.left_indent = Pt(left_pt)
             pc.paragraph_format.right_indent = Pt(left_pt)
-            R(pc, caption, cn=F_BODY, size=CAPTION_SIZE)
+            kinsoku=OxmlElement("w:kinsoku");kinsoku.set(qn("w:val"),"1")
+            pc._p.get_or_add_pPr().append(kinsoku)
+            pc.paragraph_format.widow_control=True
+            add_caption_run(pc, caption)
     else:
-        p.paragraph_format.space_after = Pt(BODY_AFTER)
+        p.paragraph_format.space_after = Pt(IMG_AFTER)
     return p
 
 
@@ -958,19 +1010,12 @@ def build_article(doc, art, first, recto=True, anchor=None):
 
     page_h_pt = (PAGE_H - M_TOP - M_BOT) * 72 / 25.4
     img_max_w = (IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0) * IMG_MAX_W_RATIO
-    group_h = 0.0
     for kind, text in art["items"]:
         if kind == "img":
             path, caption = text
-            h = image_total_height(path, caption, img_max_w)
-            if group_h > 0 and group_h + h > page_h_pt:
-                add_image(doc, path, caption, img_max_w, page_break=True)
-                group_h = h
-            else:
-                add_image(doc, path, caption, img_max_w)
-                group_h += h
+            # Word knows the actual remaining space; do not insert estimated breaks.
+            add_image(doc, path, caption, img_max_w)
             continue
-        group_h = 0.0
         p = doc.add_paragraph()
         if kind == "h":
             set_para(p, LEFT, 0, BODY_AFTER, BODY_LINE)
@@ -1083,7 +1128,7 @@ def add_front_page(doc, title, text):
             continue
         bp = doc.add_paragraph()
         set_para(bp, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
-        R(bp, para, cn=F_BODY, size=BODY_SIZE)
+        add_body_para(bp, para, cn=F_BODY, size=BODY_SIZE)
 
 
 def main():

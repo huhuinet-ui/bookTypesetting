@@ -19,6 +19,12 @@ def main():
             setattr(full.book, attr, value)
     for key, attr in {"fChapterNumber":"F_CHAPTER_NUMBER", "fChapterTitle":"F_CHAPTER_TITLE", "fChapterIntro":"F_CHAPTER_INTRO"}.items():
         if key in p: setattr(full.book, attr, str(p[key]))
+    full.book.IMG_LEADER_LENGTH = max(0, min(120, float(p.get("imgLeaderLength", 30))))
+    full.book.IMG_AFTER = max(0, min(60, float(p.get("imgAfter", 6))))
+    full.book.IMG_ALLOW_UPSCALE = bool(p.get("imgAllowUpscale", False))
+    full.book.MARK_MODE = "bold" if p.get("markMode") == "保留加粗" else "color"
+    full.book.MARK_COLOR_ON = True
+    full.book.MARK_COLOR = RGBColor.from_string(str(p.get("markTargetColor", p.get("bookColor", "#DEB887"))).lstrip("#"))
     full.book.BOOK_COLOR = RGBColor.from_string(p["bookColor"].lstrip("#"))
     full.book.RULE_COLOR = p["ruleColor"].lstrip("#")
     if p.get("imgStyle", "").startswith("简洁居中"):
