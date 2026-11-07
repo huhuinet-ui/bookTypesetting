@@ -6,6 +6,7 @@
 转换规则：
 - 按 Word 标题样式识别结构：标题3→### 章节、标题4→#### 文章、标题5→##### 小节
 - 「自序/前言/序」这类标题4 → # 前言
+- 正文加粗片段 → **文字**，保留直接加粗及字符/段落样式继承的加粗
 - 图片自动提取到「图/」子文件夹，生成 ![图注](图/imgN.png)
 - 图注：支持跳过图片后的空段落、同段说明及“图片说明：/图注：/图1：”等写法；下一段若为「图：xxx」「图1-1：xxx」或 Word 题注样式，自动取为图注
   （带编号的「图1-1：xxx」整行保留，含编号）
@@ -21,6 +22,7 @@ if (getattr(sys.stdout, "encoding", "") or "").lower() != "utf-8":
 
 from docx import Document
 from docx.oxml.ns import qn
+from docx.text.run import Run
 
 PREFACE_KEYS = ("自序", "前言", "序言", "代序", "写在前面")
 IMG_EXT = {"jpeg": "jpg", "jpe": "jpg"}
@@ -95,6 +97,54 @@ def _empty(paras, j):
     return j < 0 or j >= len(paras) or not paras[j].text.strip()
 
 
+def paragraph_runs(para):
+    """Include hyperlink text in document order, as well as ordinary runs."""
+    return [Run(node, para) for node in para._p.xpath("./w:r | ./w:hyperlink/w:r")]
+
+
+def effective_bold(run, para):
+    """Resolve direct formatting and Word's toggle properties in style chains."""
+    if run.bold is not None:
+        return run.bold  # Explicit False must override inherited bold too.
+    defaults = para.part.document.styles.element.xpath(
+        "./w:docDefaults/w:rPrDefault/w:rPr/w:b"
+    )
+    bold = bool(defaults and defaults[0].val)
+    for style in (para.style, run.style):
+        chain, seen = [], set()
+        while style is not None and style.style_id not in seen:
+            seen.add(style.style_id)
+            chain.append(style)
+            style = style.base_style
+        for ancestor in reversed(chain):
+            if ancestor.font.bold:
+                bold = not bold
+    return bold
+
+
+def paragraph_markdown(para):
+    """Merge adjacent equally formatted runs before adding Markdown markers."""
+    groups = []
+    for run in paragraph_runs(para):
+        if not run.text:
+            continue
+        bold = effective_bold(run, para)
+        if groups and groups[-1][0] == bold:
+            groups[-1][1] += run.text
+        else:
+            groups.append([bold, run.text])
+    parts = []
+    for bold, text in groups:
+        if bold:
+            # Keep edge whitespace outside **, and close markers on line breaks.
+            text = "\n".join(
+                re.sub(r"^(\s*)(\S(?:.*\S)?)(\s*)$", r"\1**\2**\3", line)
+                for line in text.split("\n")
+            )
+        parts.append(text)
+    return "".join(parts).strip()
+
+
 def convert(src, out=None, bracket_subtitle=None):
     if bracket_subtitle is None:
         bracket_subtitle = BRACKET_AS_SUBTITLE
@@ -128,14 +178,15 @@ def convert(src, out=None, bracket_subtitle=None):
                 with open(os.path.join(img_dir, fn), "wb") as f:
                     f.write(part.blob)
                 # Prefer explicit same-paragraph caption; otherwise scan past blanks.
-                caption = match_caption(p) if text else None
+                inline_caption = match_caption(p) if text else None
+                caption = inline_caption
                 if caption is None:
                     caption, caption_index = find_caption(paras, i)
                     if caption is not None:
                         i = caption_index
-                if text and caption is None:
+                if text and inline_caption is None:
                     # Do not silently discard text that shares an image paragraph.
-                    lines.append(text)
+                    lines.append(paragraph_markdown(p))
                 lines.append(f"![{caption or ''}](图/{fn})")
             i += 1
             continue
@@ -168,7 +219,8 @@ def convert(src, out=None, bracket_subtitle=None):
                 continue
 
         # 兜底：样式丢失，靠「加粗独立短段」猜文章标题、「数字.开头独立短段」猜小节标题
-        bold_all = all(r.bold for r in p.runs if r.text.strip())
+        visible_runs = [r for r in paragraph_runs(p) if r.text.strip()]
+        bold_all = bool(visible_runs) and all(r.bold for r in visible_runs)
         if bold_all and len(text) <= 30 and _empty(paras, i - 1) and _empty(paras, i + 1):
             lines.append(f"#### {clean_title(text)}")
             suspicious.append(("文章标题(猜)", clean_title(text)))
@@ -180,7 +232,7 @@ def convert(src, out=None, bracket_subtitle=None):
             i += 1
             continue
 
-        lines.append(text)
+        lines.append(paragraph_markdown(p))
         i += 1
 
     with open(out, "w", encoding="utf-8") as f:

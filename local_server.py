@@ -5,6 +5,7 @@ import base64
 import io
 import zipfile
 import json
+import re
 import secrets
 import subprocess
 import sys
@@ -21,10 +22,47 @@ LOCK = threading.Lock()
 EXPORT_CACHE = OrderedDict()
 CACHE_LIMIT = 64 * 1024 * 1024
 MAX_UPLOAD = 300 * 1024 * 1024
+THEME_HISTORY_FILE = ROOT / '.theme-colors.json'
+THEME_HISTORY_LIMIT = 24
+THEME_HISTORY_LOCK = threading.Lock()
+
+def normalize_theme_colors(colors):
+    result = []
+    if not isinstance(colors, list):
+        return result
+    for color in colors:
+        if isinstance(color, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', color.strip()):
+            color = color.strip().upper()
+            if color not in result:
+                result.append(color)
+                if len(result) == THEME_HISTORY_LIMIT:
+                    break
+    return result
+
+def read_theme_colors():
+    try:
+        return normalize_theme_colors(json.loads(THEME_HISTORY_FILE.read_text(encoding='utf-8')))
+    except (OSError, ValueError, TypeError):
+        return []
+
+def remember_theme_color(color):
+    valid = normalize_theme_colors([color])
+    if not valid:
+        raise ValueError('无效的主题色')
+    with THEME_HISTORY_LOCK:
+        colors = normalize_theme_colors(valid + read_theme_colors())
+        temporary = THEME_HISTORY_FILE.with_suffix('.json.tmp')
+        temporary.write_text(json.dumps(colors), encoding='utf-8')
+        temporary.replace(THEME_HISTORY_FILE)
+    return colors
 
 def safe_path(root, name):
     path = (root / name.replace('\\', '/')).resolve()
-    if not path.is_relative_to(root.resolve()) or path == root.resolve():
+    try:
+        relative = path.relative_to(root.resolve())
+    except ValueError:
+        raise ValueError('文件路径超出导入目录') from None
+    if not relative.parts:
         raise ValueError('文件路径超出导入目录')
     return path
 
@@ -41,6 +79,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if self.headers.get('Host') != f'127.0.0.1:{self.server.server_port}':
             return self.reply(403, b'Forbidden', 'text/plain')
+        if path == '/api/theme-colors':
+            return self.reply(200, json.dumps({'colors': read_theme_colors()}).encode(), 'application/json')
         if path == '/api/session':
             return self.reply(200, json.dumps({'token': TOKEN}).encode(), 'application/json')
         allowed = {'/': '排版工具.html', '/排版工具.html': '排版工具.html', '/word-export.js': 'word-export.js', '/word-import.js': 'word-import.js'}
@@ -84,8 +124,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         origin = f'http://127.0.0.1:{self.server.server_port}'
-        if self.path not in {'/api/export-word', '/api/convert-word'} or self.headers.get('Origin') != origin or self.headers.get('X-Export-Token') != TOKEN:
+        if self.path not in {'/api/export-word', '/api/convert-word', '/api/theme-colors'} or self.headers.get('Origin') != origin or self.headers.get('X-Export-Token') != TOKEN:
             return self.reply(403, b'Forbidden', 'text/plain')
+        if self.path == '/api/theme-colors':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 1024:
+                    raise ValueError('无效的主题色请求')
+                data = json.loads(self.rfile.read(length))
+                colors = remember_theme_color(data.get('color'))
+                return self.reply(200, json.dumps({'colors': colors}).encode(), 'application/json')
+            except Exception as error:
+                return self.reply(400, str(error).encode('utf-8'), 'text/plain; charset=utf-8')
         if not LOCK.acquire(blocking=False):
             return self.reply(409, '已有 Word 导出任务，请稍后再试'.encode(), 'text/plain; charset=utf-8')
         try:

@@ -41,19 +41,37 @@ def install_styles(full, params, artwork):
             full.toc.R(title, full.TOC_TITLE, 10.57*scale, bold=False)
             english=english_line.add_run('Content');english.font.name='Times New Roman'
             english.font.size=Pt(9.13*scale)
+            last_volume = None
             for chapter in chapters:
+                volume = chapter.get('volume')
+                if volume and volume is not last_volume:
+                    p=doc.add_paragraph();pf=p.paragraph_format
+                    pf.space_before=Pt(24*scale);pf.space_after=Pt(14*scale)
+                    pf.line_spacing=Pt(23*scale);pf.keep_with_next=True
+                    full.toc.R(p,volume['number'],12.4*scale,bold=True)
+                    if volume['title']: full.toc.R(p,'  '+volume['title'],15.5*scale,bold=True)
+                    border=OxmlElement('w:pBdr');bottom=OxmlElement('w:bottom')
+                    for key,value in [('val','single'),('sz','5'),('space','6'),('color',str(params.get('bookColor','#DEB887')).lstrip('#'))]:
+                        bottom.set(qn('w:'+key),value)
+                    border.append(bottom);p._p.get_or_add_pPr().append(border)
+                last_volume=volume
+                indent_pt=10*scale if volume else 0
                 if chapter['title'] is not None:
                     p=doc.add_paragraph();pf=p.paragraph_format
                     pf.space_before=Pt(20*scale);pf.space_after=Pt(17*scale);pf.line_spacing=Pt(19*scale)
                     pf.keep_with_next=True
+                    pf.left_indent=Pt(indent_pt)
                     full.toc.R(p, chapter['title'], chapter_size, bold=full.CHAPTER_TOC_BOLD)
                 if not chapter['articles']: continue
                 show_sequence=bool(params.get("tocShowSequence",False))
                 table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False
                 sequence_mm=23*scale*25.4/72
-                widths=[sequence_mm,width-sequence_mm-width*.34,width*.34] if show_sequence else [width*.66,width*.34]
+                row_width=width-indent_pt*25.4/72
+                widths=[sequence_mm,row_width-sequence_mm-width*.34,width*.34] if show_sequence else [row_width-width*.34,width*.34]
                 for column,w in zip(table.columns,widths):column.width=Mm(w)
                 props=table._tbl.tblPr
+                if indent_pt:
+                    indent=OxmlElement('w:tblInd');indent.set(qn('w:w'),str(round(indent_pt*20)));indent.set(qn('w:type'),'dxa');props.append(indent)
                 borders=OxmlElement('w:tblBorders')
                 for edge in ('top','left','bottom','right','insideH','insideV'):
                     element=OxmlElement('w:'+edge);element.set(qn('w:val'),'nil');borders.append(element)

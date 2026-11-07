@@ -34,6 +34,13 @@ body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; font-size:13px; c
 #panel input[type=color] { padding:0; border:1px solid #cfc9ba; border-radius:3px; width:100%; height:26px; background:#fff; cursor:pointer; }
 #panel .bool-row { grid-column:1 / -1; display:flex; align-items:center; gap:6px; font-size:12px; }
 #panel .bool-row input { width:auto; }
+#panel .theme-history-colors { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+#panel .theme-history-color { display:flex; align-items:center; gap:7px; min-width:0; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:#344b3d; cursor:pointer; font:11px Consolas,monospace; }
+#panel .theme-history-color:hover { background:#f1f6f3; }
+#panel .theme-history-color[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+#panel .theme-history-color:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+#panel .theme-history-chip { width:22px; height:22px; flex:0 0 22px; border:1px solid #0002; border-radius:4px; }
+#panel .theme-history small { color:#718278; line-height:1.6; }
 #panel .unit { font-size:10px; color:#a49b8a; margin-left:2px; }
 #preview { flex:1; overflow:auto; background:#6b6b6b; padding:18px 12px 40px; }
 #pages .pagedjs_pages { zoom: var(--zoom, 1); margin:0 auto; }
@@ -215,17 +222,20 @@ const GROUPS = [
  ]},
  { title:"章节页（篇章页）", items:[
    {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题","版式三：玫瑰线描+竖排引言","版式四：纸飞机线描+竖排引言"]},
+   {k:"volumeNumberSize",l:"卷页·卷序号字号",t:"num",d:22,u:"pt",s:0.5,min:5,max:96},
+   {k:"volumeTitleSize",l:"卷页·卷名称字号",t:"num",d:22,u:"pt",s:0.5,min:5,max:96},
    {k:"chapterSize",l:"版式1·章节名字号",t:"num",d:18,u:"pt",s:0.5,min:6,max:40},
    {k:"chapterTopLines",l:"章节名上方空行",t:"num",d:8,u:"行",s:1,min:0,max:30},
    {k:"chapterRuleW",l:"下划线宽",t:"num",d:4.36,u:"cm",s:0.1,min:0,max:20},
    {k:"chapterRulePt",l:"下划线粗细",t:"num",d:1,u:"pt",s:0.1,min:0,max:5},
    {k:"introSize",l:"版式1·引言字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
    {k:"introBoxW",l:"引言框宽",t:"num",d:8.34,u:"cm",s:0.1,min:1,max:20},
-   {k:"chapter4Bg",l:"版式三/四·底色",t:"color",d:"#DFE9C9"},
+   {k:"chapterBgFollowTheme",l:"版式三/四·底色跟随主色",t:"bool",d:true},
+   {k:"chapter4Bg",l:"版式三/四·自定义底色（关闭跟随后生效）",t:"color",d:"#DFE9C9"},
    {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
    {k:"chapter2TitleSize",l:"版式2·标题字号",t:"num",d:18,u:"pt",s:0.5,min:5,max:96},
-   {k:"chapter4NumberSize",l:"版式3·章节序号字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter4NumberSize",l:"版式3·章节序号字号",t:"num",d:21,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4NumberColor",l:"版式3·章节序号颜色",t:"color",d:"#20251c"},
    {k:"chapter4TitleSize",l:"版式3·标题字号",t:"num",d:21.6,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4TitleColor",l:"版式3·标题颜色",t:"color",d:"#20251c"},
@@ -253,7 +263,7 @@ const GROUPS = [
    {k:"imgBlockSize",l:"色块尺寸比例",t:"num",d:0.7,u:"",s:0.05,min:0.1,max:1.5},
    {k:"imgBlockExpose",l:"色块露出量",t:"num",d:6,u:"pt",s:0.5,min:0,max:60},
    {k:"imgLineOn",l:"图注引线",t:"bool",d:true},
-   {k:"imgLeaderLength",l:"L引线向下长度（图片底部至拐角）",t:"num",d:30,u:"pt",s:1,min:0,max:120},
+   {k:"imgLeaderLength",l:"L引线向下长度（图片底部至拐角）",t:"num",d:15,u:"pt",s:1,min:0,max:120},
    {k:"imgLineGap",l:"简洁版式·图与图注空隙",t:"num",d:6,u:"pt",s:0.5,min:0,max:60},
  ]},
  { title:"诗歌排版", items:[
@@ -308,6 +318,70 @@ const P = {};
 GROUPS.forEach(g => g.items.forEach(it => P[it.k] = it.d));
 let BOOK_NAME = "";
 
+/* ==================== 本机主题色历史 ==================== */
+const THEME_HISTORY_KEY="bookTypesetting.themeColors.v1";
+const THEME_HISTORY_LIMIT=24;
+let themeStorageAvailable=true, themeServerAvailable=false, themeHistoryRevision=0;
+let themeHistoryQueue=Promise.resolve(), themeSessionPromise=null;
+function normalizeThemeColors(values){
+  if(!Array.isArray(values)) return [];
+  return [...new Set(values.filter(c=>typeof c==="string" && /^#[0-9a-f]{6}$/i.test(c.trim())).map(c=>c.trim().toUpperCase()))].slice(0,THEME_HISTORY_LIMIT);
+}
+function loadThemeColors(){
+  try{return normalizeThemeColors(JSON.parse(localStorage.getItem(THEME_HISTORY_KEY)||"[]"));}
+  catch(error){themeStorageAvailable=false;return [];}
+}
+let themeHistory=loadThemeColors();
+if(!themeHistory.length) themeHistory=normalizeThemeColors([P.bookColor]);
+function saveThemeColors(){
+  try{localStorage.setItem(THEME_HISTORY_KEY,JSON.stringify(themeHistory));themeStorageAvailable=true;}
+  catch(error){themeStorageAvailable=false;}
+}
+function renderThemeHistory(){
+  const host=document.getElementById("themeHistoryColors");
+  if(!host) return;
+  const current=String(P.bookColor).toUpperCase();
+  const disabled=document.getElementById("f_bookColor").disabled;
+  host.innerHTML=themeHistory.map(color=>`<button type="button" class="theme-history-color" ${disabled?"disabled":""} data-theme-color="${color}" title="使用主题色 ${color}" aria-label="使用主题色 ${color}" aria-pressed="${color===current}"><span class="theme-history-chip" style="background:${color}"></span><span>${color}</span></button>`).join("");
+  const note=document.getElementById("themeHistoryNote");
+  if(note)note.textContent=themeStorageAvailable||themeServerAvailable?"点选即可复用。记录仅保存在本机，最多保留 24 个。":"当前无法保存记录，颜色暂存于本页面。";
+}
+function usesThemeHistoryServer(){return location.protocol==="http:" && location.hostname==="127.0.0.1";}
+function queueThemeColor(color){
+  if(!usesThemeHistoryServer()) return;
+  themeHistoryQueue=themeHistoryQueue.then(async()=>{
+    if(!themeSessionPromise)themeSessionPromise=fetch('/api/session').then(response=>{if(!response.ok)throw new Error('session');return response.json();});
+    const {token}=await themeSessionPromise;
+    const response=await fetch('/api/theme-colors',{method:'POST',headers:{'Content-Type':'application/json','X-Export-Token':token},body:JSON.stringify({color})});
+    if(!response.ok)throw new Error('theme history');
+    const data=await response.json();
+    themeServerAvailable=true;
+    themeHistory=normalizeThemeColors([...themeHistory,...normalizeThemeColors(data.colors)]);
+    saveThemeColors();renderThemeHistory();
+  }).catch(()=>{themeSessionPromise=null;themeServerAvailable=false;renderThemeHistory();});
+}
+function rememberThemeColor(color){
+  const valid=normalizeThemeColors([color])[0];
+  if(!valid)return;
+  themeHistoryRevision++;
+  themeHistory=normalizeThemeColors([valid,...themeHistory]);
+  saveThemeColors();renderThemeHistory();queueThemeColor(valid);
+}
+async function initializeThemeHistory(){
+  saveThemeColors();renderThemeHistory();
+  if(!usesThemeHistoryServer())return;
+  const revision=themeHistoryRevision;
+  try{
+    const response=await fetch('/api/theme-colors');
+    if(!response.ok)throw new Error('theme history');
+    const data=await response.json(), remote=normalizeThemeColors(data.colors);
+    themeServerAvailable=true;
+    themeHistory=normalizeThemeColors(revision===themeHistoryRevision?[...remote,...themeHistory]:[...themeHistory,...remote]);
+    saveThemeColors();renderThemeHistory();
+    if(!remote.length)queueThemeColor(P.bookColor);
+  }catch(error){renderThemeHistory();}
+}
+
 /* ==================== 表单生成 ==================== */
 const formHost = document.getElementById("formHost");
 function buildForm(){
@@ -335,6 +409,7 @@ function buildForm(){
         html += `<div class="field wide"><label>${it.l}</label><input type="text" id="f_${it.k}" value="${escAttr(val)}"></div>`;
       }
     }
+    if(g.title==="书籍主色调") html+=`<div class="field wide theme-history"><label>最近使用的主题色</label><div id="themeHistoryColors" class="theme-history-colors" role="group" aria-label="历史主题色"></div><small id="themeHistoryNote"></small></div>`;
     if(g.title==="章节页（篇章页）") html+=`<div class="field wide"><small>版式二标题颜色自动跟随「书籍主色调」，无需单独设置。</small></div>`;
     if(g.title==="字体") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">用 {{文字}} 标记特殊字体；单独一行 {{ 开始、}} 结束可标记多段正文。字号跟随正文，可与 **加粗／上色** 叠加。</small></div>`;
     if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">整组图片后留白：图注末尾到下一段文字或下一张图片的距离；不控制图片与图注之间的距离。1 pt ≈ 0.35 mm，6 pt 约为 2.1 mm。</small></div>`;
@@ -346,9 +421,16 @@ function buildForm(){
   formHost.innerHTML = html;
   formHost.querySelectorAll(".field label").forEach(label=>{const input=label.parentElement.querySelector("input,select,textarea");if(input)label.htmlFor=input.id;});
   formHost.querySelectorAll("input,select,textarea").forEach(el=>{
-    el.addEventListener("input", ()=>{ readForm(); if(el.id.startsWith("f_spine")) updateSpineEstimate(); else scheduleRender(); });
-    el.addEventListener("change", ()=>{ readForm(); if(el.id.startsWith("f_spine")) updateSpineEstimate(); else scheduleRender(); });
+    el.addEventListener("input", ()=>{ readForm(); if(el.id==="f_bookColor") renderThemeHistory(); if(el.id.startsWith("f_spine")) updateSpineEstimate(); else scheduleRender(); });
+    el.addEventListener("change", ()=>{ readForm(); if(el.id==="f_bookColor") rememberThemeColor(P.bookColor); if(el.id.startsWith("f_spine")) updateSpineEstimate(); else scheduleRender(); });
   });
+  document.getElementById("themeHistoryColors").addEventListener("click",event=>{
+    const button=event.target.closest("button[data-theme-color]");
+    if(!button || button.disabled)return;
+    document.getElementById("f_bookColor").value=button.dataset.themeColor;
+    readForm();rememberThemeColor(P.bookColor);scheduleRender();
+  });
+  renderThemeHistory();
   formHost.querySelectorAll(".group-title").forEach(h=>{
     h.addEventListener("click", ()=>{
       const b = formHost.querySelector(`.gbody[data-g="${h.dataset.g}"]`);
@@ -481,7 +563,7 @@ function parseBook(srcText){
   const n = raw.length;
   let titlePageText=[], titlePageTitle=null;
   let preface=[], afterword=[]; let prefaceTitle=null, afterwordTitle=null;
-  const chapters=[]; let i=0;
+  const chapters=[], volumes=[]; let volume=null, i=0;
   while(i<n){
     let s = raw[i].trim();
     if(!s){ i++; continue; }
@@ -499,6 +581,12 @@ function parseBook(srcText){
       while(i<n && !raw[i].trim().startsWith("#")){ if(raw[i].trim()) target.push(raw[i].trim()); i++; }
       continue;
     }
+    if(/^##\s+/.test(s)){
+      const label=s.replace(/^##\s+/,"").trim();
+      const match=label.match(/^((?:第)?[一二三四五六七八九十百零〇两\d]+卷|卷[一二三四五六七八九十百零〇两\d]+)[\s　:：、.．—-]*(.*)$/);
+      volume={id:volumes.length,number:match?match[1]:`卷${volumes.length+1}`,title:match?match[2]:label,label};
+      volumes.push(volume); i++; continue;
+    }
     if(s.startsWith("###") && !s.startsWith("####")){
       const title = s.replace(/^#+\s*/,"").trim();
       // Everything between the chapter heading and the next heading belongs
@@ -515,7 +603,7 @@ function parseBook(srcText){
         introLines[0]=introLines[0].replace(/^(?:\*\*|__)?(?:章节引言|章节简介|简介|引言|导语)(?:\*\*|__)?\s*[:：]?\s*(?:\*\*|__)?\s*/,"");
       }
       const intro=introLines.join("\n").trim() || null;
-      chapters.push({title, intro, articles:[]}); i=j; continue;
+      chapters.push({title, intro, volume, articles:[]}); i=j; continue;
     }
     if(s.startsWith("####")){
       const title = s.replace(/^#+\s*/,"").replace(/^标题\s*[:：]\s*/,"").trim();
@@ -531,13 +619,13 @@ function parseBook(srcText){
       let poem=false; const body2=[];
       for(const ln of body){ if(/^诗歌\s*[:：]?\s*$/.test(ln)) poem=true; else body2.push(ln); }
       const art = {title, author, poem, items: classify(body2, poem)};
-      if(chapters.length) chapters[chapters.length-1].articles.push(art);
-      else chapters.push({title:null, intro:null, articles:[art]});
+      if(chapters.length && chapters[chapters.length-1].volume===volume) chapters[chapters.length-1].articles.push(art);
+      else chapters.push({title:null, intro:null, volume, articles:[art]});
       i=j; continue;
     }
     i++;
   }
-  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n"):null, prefaceTitle, afterword: afterword.length?afterword.join("\n"):null, afterwordTitle, chapters };
+  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n"):null, prefaceTitle, afterword: afterword.length?afterword.join("\n"):null, afterwordTitle, chapters, volumes };
 }
 
 /* ==================== 文件与图片 ==================== */
@@ -638,6 +726,9 @@ function buildCSS(){
 .pagedjs_right_page .article-rule, .pagedjs_first_page .article-rule { margin-left:auto; margin-right:0; }
 .pagedjs_left_page .article-rule { margin-left:0; margin-right:auto; }
 .article-author { font-family:${fontStack(P.fAuthor)}; font-size:${P.authorSize}pt; color:${hexColor(P.bookColor)}; }
+.volume-page { text-align:center; padding-top:${Math.max(0,P.pageH*.30-P.mTop)}mm; }
+.volume-number { font-family:${fontStack(P.fChapterNumber)}; font-size:${P.volumeNumberSize}pt; line-height:1.5; margin-bottom:18pt; }
+.volume-name { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.volumeTitleSize}pt; line-height:1.5; overflow-wrap:anywhere; }
 .chapter-page { text-align:center; }
 .chapter-title { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterSize}pt; line-height:1.3; }
 .chapter-rule { height:0; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; width:${P.chapterRuleW}cm; margin:8pt auto 0 auto; }
@@ -655,6 +746,9 @@ function buildCSS(){
 .chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fChapterIntro)}; font-size:${P[isChap5()?"chapter5IntroSize":"chapter4IntroSize"]}pt; color:${hexColor(P[isChap5()?"chapter5IntroColor":"chapter4IntroColor"])}; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:normal; word-break:normal; line-break:strict; text-wrap:pretty; }
 .front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-title { font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
+.toc-volume-title { display:flex; align-items:baseline; gap:12pt; font-family:${fontStack(P.fTitle)}; font-size:15.5pt; font-weight:bold; line-height:1.5; margin:24pt 0 14pt; padding-bottom:6pt; border-bottom:.6pt solid ${hexColor(P.bookColor)}; break-after:avoid; break-inside:avoid; }
+.toc-volume-number { font-size:.8em; white-space:nowrap; }
+.toc-reference .toc-section-title.toc-in-volume, .toc-reference .toc-reference-row.toc-in-volume { margin-left:10pt; }
 .toc-entry { display:flex; justify-content:space-between; align-items:baseline; line-height:${P.entrySpacing}; margin:0; }
 .toc-entry .toc-text { white-space:pre-wrap; }
 .toc-entry .toc-num { white-space:nowrap; }
@@ -802,13 +896,19 @@ function renderTocEntry(text, key, size, bold, indentPt){
   else if(leader==="短横线") fill = `<span style="flex:1;border-bottom:1px dashed #888;margin:0 6pt;position:relative;top:-2pt;"></span>`;
   return `<div class="toc-entry" style="${style}"><span class="toc-text">${esc(text)}</span>${fill}<span class="toc-num"${ref}>${num}</span></div>`;
 }
+function renderTocVolume(volume){
+  return `<div class="toc-volume-title"><span class="toc-volume-number">${esc(volume.number)}</span>${volume.title?`<span>${esc(volume.title)}</span>`:""}</div>`;
+}
 function renderReferenceToc(data){
   let html=`<div class="toc toc-reference"><div class="toc-title">${esc(P.tocTitle)}<span class="toc-english">Content</span></div>`;
+  let lastVolume=null;
   data.chapters.forEach((chapter,ci)=>{
-    if(chapter.title!=null) html+=`<div class="toc-section-title">${esc(chapter.title)}</div>`;
+    if(chapter.volume && chapter.volume!==lastVolume) html+=renderTocVolume(chapter.volume);
+    lastVolume=chapter.volume;
+    if(chapter.title!=null) html+=`<div class="toc-section-title${chapter.volume?" toc-in-volume":""}">${esc(chapter.title)}</div>`;
     chapter.articles.forEach((article,ai)=>{
       const digits=Math.max(3,Number(P.pad)||0),key=`a${ci}_${ai}`;
-      html+=`<div class="toc-reference-row">${P.tocShowSequence?`<span class="toc-sequence">${String(ai+1).padStart(2,"0")}</span>`:""}<span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?`${esc(article.author)} / `:""}<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></span></div>`;
+      html+=`<div class="toc-reference-row${chapter.volume?" toc-in-volume":""}">${P.tocShowSequence?`<span class="toc-sequence">${String(ai+1).padStart(2,"0")}</span>`:""}<span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?`${esc(article.author)} / `:""}<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></span></div>`;
     });
   });
   return html+"</div>";
@@ -831,8 +931,10 @@ function renderBook(){
   } else {
   tocHtml = `<div class="toc-wrap${firstEl?"":" break-page"}"><div class="toc">`;
   tocHtml += `<div class="toc-title">${esc(P.tocTitle)}</div>`;
-  let tci = 0;
+  let tci = 0, lastVolume=null;
   for(const ch of d.chapters){
+    if(ch.volume && ch.volume!==lastVolume) tocHtml+=renderTocEntry(ch.volume.label,null,P.chapterTocSize+2,true,0);
+    lastVolume=ch.volume;
     if(ch.title != null) tocHtml += renderTocEntry(ch.title, "c"+tci+"_0", P.chapterTocSize, P.chapterTocBold, 0);
     ch.articles.forEach((a,idx)=>{ tocHtml += renderTocEntry(a.title, "a"+tci+"_"+idx, P.tocEntrySize, false, P.articleIndentPt); });
     tci++;
@@ -843,10 +945,17 @@ function renderBook(){
   firstEl = false;
   out.push(`<div class="body break-right">`);
   let firstInBody = true;
-  let chapterIdx = 0;
+  let chapterIdx = 0, bodyVolume=null;
   for(const ch of d.chapters){
+    const startsVolume=ch.volume && ch.volume!==bodyVolume;
+    if(startsVolume){
+      const br=firstInBody?"":" break-right";
+      out.push(`<div class="volume-page${br}" data-toc-key="v${ch.volume.id}"><div class="volume-number">${esc(ch.volume.number)}</div>${ch.volume.title?`<div class="volume-name">${esc(ch.volume.title)}</div>`:""}</div>`);
+      firstInBody=false;
+    }
+    bodyVolume=ch.volume;
     if(ch.title != null){
-      const br = firstInBody ? "" : " break-right";
+      const br = firstInBody ? "" : startsVolume ? " break-page" : " break-right";
       let cp;
       if(isChap4() || isChap5()){
         const ordinal=d.chapters.slice(0,chapterIdx+1).filter(c=>c.title!=null).length;
@@ -939,7 +1048,7 @@ async function renderBookPreview(){
 function postProcess(){
   const pages = Array.from(pagesEl.querySelectorAll(".pagedjs_page"));
   let bodyStart = -1;
-  pages.forEach((pg,i)=>{ if(bodyStart<0 && (pg.querySelector(".chapter-page")||pg.querySelector(".article"))) bodyStart = i; });
+  pages.forEach((pg,i)=>{ if(bodyStart<0 && (pg.querySelector(".volume-page")||pg.querySelector(".chapter-page")||pg.querySelector(".article"))) bodyStart = i; });
   const titlePage = {};
   pages.forEach((pg,i)=>{
     const num = (bodyStart>=0 && i>=bodyStart) ? (i-bodyStart+1) : 0;
@@ -965,10 +1074,11 @@ function decoratePage(pg, i, bodyStart){
     frame.style.cssText=`position:absolute;inset:${P.bleed+Math.min(13,P.pageW*.075,P.pageH*.075)}mm;border:.45pt solid #333;pointer-events:none;z-index:0;`;
     sheet.appendChild(frame);
   }
+  if(pg.querySelector(".volume-page")) sheet.style.background=hexColor(P.bookColor);
   const isChapter = pg.querySelector(".chapter-page");
   if(isChapter){
     if(isChap4() || isChap5()){
-      sheet.style.background=hexColor(P.chapter4Bg||"#DFE9C9");
+      sheet.style.background=hexColor(P.chapterBgFollowTheme!==false ? P.bookColor : (P.chapter4Bg||"#DFE9C9"));
       const layout=pg.querySelector(".chap4-layout");
       if(layout){
         sheet.appendChild(layout);
@@ -1168,6 +1278,7 @@ document.getElementById("zoomIn").addEventListener("click", ()=>{ zoom = Math.mi
 document.getElementById("zoomOut").addEventListener("click", ()=>{ zoom = Math.max(0.3, zoom-0.1); applyZoom(); });
 
 buildForm();
+const themeHistoryReady=initializeThemeHistory();
 document.getElementById('settingsNav').innerHTML=SETTING_SECTIONS.map((section,index)=>`<button type="button" data-section="${index}">${section.title}</button>`).join('');
 document.getElementById('settingsNav').addEventListener('click',event=>{
   const button=event.target.closest('button[data-section]');if(!button)return;

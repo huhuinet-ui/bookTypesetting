@@ -84,7 +84,12 @@ def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
     toc.R(tp, TOC_TITLE, toc.TITLE_SIZE, bold=True)
 
     entries = []
+    last_volume = None
     for ch in chapters:
+        volume = ch.get("volume")
+        if volume and volume is not last_volume:
+            entries.append((volume["label"], "", CHAPTER_TOC_SIZE + 2, True, 0))
+        last_volume = volume
         if ch["title"] is not None:
             entries.append((ch["title"], page_map.get(ch["title"], ""),
                             CHAPTER_TOC_SIZE, CHAPTER_TOC_BOLD, 0))
@@ -122,12 +127,23 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
         pg = page_map.get(title, 1)
         return pg % 2 == 1
 
+    last_volume = None
     for ci, ch in enumerate(chapters):
+        volume = ch.get("volume")
+        starts_volume = volume and volume is not last_volume
+        if starts_volume:
+            volume_sec = first_sec if ci == 0 else doc.add_section(WD_SECTION.ODD_PAGE)
+            if ci != 0:
+                remove_page_number_start(volume_sec._sectPr)
+            book.clear_header(volume_sec)
+            book.add_volume_background(volume_sec)
+            book.add_volume_page(doc, volume, anchor=_tok(volume["label"]))
+        last_volume = volume
         if ch["title"] is not None:
-            if ci == 0:
+            if ci == 0 and not starts_volume:
                 page_sec = first_sec
             else:
-                page_sec = doc.add_section(WD_SECTION.ODD_PAGE)   # 篇章页从奇数页(右页)开始，与参考书一致
+                page_sec = doc.add_section(WD_SECTION.NEW_PAGE if starts_volume else WD_SECTION.ODD_PAGE)   # 首章紧接卷页，其余章节右页开始
                 remove_page_number_start(page_sec._sectPr)
             book.clear_header(page_sec)                      # 暗码：篇章页不显示页码
             book.add_page_background(page_sec, str(book.BOOK_COLOR))   # 篇章页整页底色（用书籍主色调）
@@ -138,7 +154,10 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
             for i, a in enumerate(ch["articles"]):
                 book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
         else:
-            book.setup_header(first_sec, pad=pad)
+            art_sec = doc.add_section(WD_SECTION.NEW_PAGE) if starts_volume else doc.sections[-1]
+            if starts_volume:
+                remove_page_number_start(art_sec._sectPr)
+            book.setup_header(art_sec, pad=pad)
             for i, a in enumerate(ch["articles"]):
                 book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
 

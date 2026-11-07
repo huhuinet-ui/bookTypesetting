@@ -157,6 +157,8 @@ SUBTITLE_BOLD = True
 # 小标题是否加粗。True=加粗左对齐（和正文同字号 9 磅）。
 
 # ---- 章节页（篇章页）----
+VOLUME_NUMBER_SIZE = 22       # 卷页卷序号字号（磅）
+VOLUME_TITLE_SIZE = 22        # 卷页卷名称字号（磅）
 CHAPTER_SIZE = 18
 # 章节名字号（磅）：14 磅，和文章标题一样大。
 CHAPTER_TOP_LINES = 8
@@ -201,7 +203,7 @@ IMG_LINE_ON = True
 # 开关：图注要不要用折线连到图片（引线）。True=有；False=没有。
 IMG_LINE_COLOR = None
 # 引线颜色。None=黑色；想自定义就写 RGBColor(红,绿,蓝)。
-IMG_LEADER_LENGTH = 30        # 图片底部至 L 形拐角的竖线长度（磅）
+IMG_LEADER_LENGTH = 15        # 图片底部至 L 形拐角的竖线长度（磅）
 IMG_LINE_GAP = 6
 # 图片和图注之间的空隙（磅）：引线竖线就画在这段空隙里，图注会跟着往下移。
 
@@ -823,18 +825,26 @@ def _classify_poem(lines, base_dir=None):
     return items
 
 
+def parse_volume_heading(label, index):
+    match = re.match(r"^((?:第)?[一二三四五六七八九十百零〇两\d]+卷|卷[一二三四五六七八九十百零〇两\d]+)[\s　:：、.．—-]*(.*)$", label)
+    return {"id": index, "number": match[1] if match else "卷" + str(index + 1),
+            "title": match[2] if match else label, "label": label}
+
+
 def parse_book(src=None):
     """读取源文件，解析出前言/后记/章节/文章。
     返回 dict：{"preface": str|None, "afterword": str|None,
                 "chapters": [{"title": str|None, "intro": str|None, "articles": [...]}]}"""
     src = src or SRC
     src_dir = os.path.dirname(os.path.abspath(src))
-    raw = open(src, encoding="utf-8").read().split("\n")
+    with open(src, encoding="utf-8") as source:
+        raw = source.read().split("\n")
     n = len(raw)
     preface, afterword = [], []
     title_page, title_page_title = [], None
     preface_title = afterword_title = None
-    chapters = []
+    chapters, volumes = [], []
+    volume = None
     i = 0
     while i < n:
         s = raw[i].strip()
@@ -862,6 +872,12 @@ def parse_book(src=None):
                     target.append(raw[i].strip())
                 i += 1
             continue
+        # 卷用二级标题表示，章节编号不因新卷而重置。
+        if re.match(r"^##\s+", s):
+            volume = parse_volume_heading(re.sub(r"^##\s+", "", s).strip(), len(volumes))
+            volumes.append(volume)
+            i += 1
+            continue
         # 章节（### 且不是 ####）
         if s.startswith("###") and not s.startswith("####"):
             title = s.lstrip("#").strip()
@@ -875,7 +891,7 @@ def parse_book(src=None):
             if intro_lines:
                 intro_lines[0] = re.sub(r"^(?:\*\*|__)?(?:章节引言|章节简介|简介|引言|导语)(?:\*\*|__)?\s*[:：]?\s*(?:\*\*|__)?\s*", "", intro_lines[0])
             intro = "\n".join(intro_lines).strip() or None
-            chapters.append({"title": title, "intro": intro, "articles": []})
+            chapters.append({"title": title, "intro": intro, "volume": volume, "articles": []})
             i = j
             continue
         # 文章（####）
@@ -909,10 +925,10 @@ def parse_book(src=None):
                     body2.append(ln)
             art = {"title": title, "author": author, "poem": poem,
                    "items": classify(body2, base_dir=src_dir, poem=poem)}
-            if chapters:
+            if chapters and chapters[-1].get("volume") is volume:
                 chapters[-1]["articles"].append(art)
             else:
-                chapters.append({"title": None, "intro": None, "articles": [art]})
+                chapters.append({"title": None, "intro": None, "volume": volume, "articles": [art]})
             i = j
             continue
         i += 1
@@ -924,6 +940,7 @@ def parse_book(src=None):
         "afterword": "\n".join(afterword) if afterword else None,
         "afterword_title": afterword_title,
         "chapters": chapters,
+        "volumes": volumes,
     }
 
 
@@ -1072,6 +1089,28 @@ def _render_poems(doc, items):
             path, caption = text
             add_image(doc, path, caption)
             stanza = False
+
+
+def add_volume_background(section):
+    add_page_background(section, str(BOOK_COLOR))
+
+
+def add_volume_page(doc, volume, anchor=None):
+    """One editable volume divider; section boundaries provide the page breaks."""
+    p = doc.add_paragraph()
+    set_para(p, CENTER, 0, 18)
+    p.paragraph_format.line_spacing = 1.5  # Multiple, not a fixed 1.5 pt line height.
+    p.paragraph_format.keep_with_next = True
+    p.paragraph_format.keep_together = True
+    p.paragraph_format.space_before = Mm(max(0, PAGE_H * .30 - M_TOP))
+    R(p, volume["number"], cn=F_CHAPTER_NUMBER, size=VOLUME_NUMBER_SIZE)
+    add_anchor(p, anchor)
+    if volume.get("title"):
+        p = doc.add_paragraph()
+        set_para(p, CENTER, 0, 0)
+        p.paragraph_format.line_spacing = 1.5
+        p.paragraph_format.keep_together = True
+        R(p, volume["title"], cn=F_CHAPTER_TITLE, size=VOLUME_TITLE_SIZE)
 
 
 def add_chapter_page(doc, title, intro=None, anchor=None):

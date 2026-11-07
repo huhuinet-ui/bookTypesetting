@@ -34,7 +34,10 @@ def install_chapters(full, params, artwork):
     W=(book.PAGE_W+2*book.BLEED_MM)*72/25.4
     H=(book.PAGE_H+2*book.BLEED_MM)*72/25.4
     original_background=book.add_page_background
-    book.add_page_background=lambda sec,color:original_background(sec,'FFFFFF' if second else params.get('chapter4Bg','#DFE9C9').lstrip('#'))
+    background = (params.get('bookColor', '#DEB887') if params.get('chapterBgFollowTheme', True)
+                  else params.get('chapter4Bg', '#DFE9C9'))
+    book.add_page_background=lambda sec,color:original_background(sec,'FFFFFF' if second else background.lstrip('#'))
+    book.add_volume_background=lambda sec:original_background(sec,str(book.BOOK_COLOR))
     ordinal=[0]
     original_body=full.build_body
     def body(*args,**kwargs):
