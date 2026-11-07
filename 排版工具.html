@@ -282,7 +282,7 @@ const GROUPS = [
    {k:"pad",l:"页码补零位数",t:"num",d:2,u:"位",s:1,min:1,max:4},
  ]},
  { title:"目录", items:[
-   {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码"]},
+   {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码","版式三：年轮枝叶+右侧层级目录"]},
    {k:"tocShowSequence",l:"版式2·显示文章序号",t:"bool",d:false},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
@@ -458,6 +458,7 @@ function ptmm(v){ return v*25.4/72; }
 function mmpt(v){ return v*72/25.4; }
 function fontStack(cjk){ return `"Times New Roman","${cjk}",serif`; }
 function hexColor(c){ if(!c) return "#000000"; return /^#/.test(c)?c:"#"+c; }
+function isIllustratedToc(){return String(P.tocStyle||"").startsWith("版式三");}
 function isReferenceToc(){ return String(P.tocStyle||"").startsWith("版式二"); }
 function isChap5(){ return String(P.chapterStyle||"").includes("纸飞机"); }
 function isChap4(){ return String(P.chapterStyle||"").includes("玫瑰"); }
@@ -706,6 +707,22 @@ function buildCSS(){
 @page toc-reference:left { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
 @page toc-reference:right { margin:${(P.pageH+2*P.bleed)*.185}mm ${(P.pageW+2*P.bleed)*(484.724-389.7)/484.724}mm ${(P.pageH+2*P.bleed)*.15}mm ${(P.pageW+2*P.bleed)*107.7/484.724}mm; }
 .toc-reference-wrap { page:toc-reference; }
+@page toc-illustrated { margin:${H*.26}mm ${W*.08}mm ${H*.10}mm ${W*.49}mm; }
+@page toc-illustrated:left { margin:${H*.26}mm ${W*.08}mm ${H*.10}mm ${W*.49}mm; }
+@page toc-illustrated:right { margin:${H*.26}mm ${W*.08}mm ${H*.10}mm ${W*.49}mm; }
+.toc-illustrated-wrap { page:toc-illustrated; }
+.toc-illustrated { color:#454d42; }
+.toc-illustrated-start { break-inside:avoid; }
+.toc-illustrated-row { display:flex; align-items:baseline; gap:8pt; margin:0 0 5pt; padding-left:var(--toc-indent); line-height:${P.entrySpacing}; break-inside:avoid; }
+.toc-illustrated-text { flex:1; min-width:0; overflow-wrap:anywhere; }
+.toc-illustrated .toc-num { flex:0 0 auto; min-width:3ch; text-align:right; font-family:"Times New Roman",serif; font-size:10pt; font-variant-numeric:tabular-nums; }
+.toc-illustrated-volume { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterTocSize+2}pt; margin:18pt 0 12pt; break-after:avoid; }
+.toc-illustrated-volume .toc-num { align-self:flex-end; padding-bottom:3pt; }
+.toc-illustrated-volume-number { display:block; font-size:.8em; margin-bottom:4pt; }
+.toc-illustrated-chapter { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterTocSize}pt; font-weight:${P.chapterTocBold?"bold":"normal"}; margin-top:10pt; break-after:avoid; }
+.toc-illustrated-article { font-size:${P.tocEntrySize}pt; }
+.toc-illustrated-heading { position:absolute; top:8%; right:8%; writing-mode:vertical-rl; text-orientation:upright; font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; letter-spacing:6pt; line-height:1.3; color:#59604f; }
+.toc-illustrated-art { position:absolute; left:0; top:14%; width:48%; height:78%; pointer-events:none; }
 .title-page { padding-top:${Math.max(0,P.pageH*.32-P.mTop)}mm; text-align:center; font-family:${fontStack(P.fTitle)}; }
 .title-page-name { font-size:${P.titlePageSize}pt; line-height:1.5; margin:0 0 24pt; overflow-wrap:anywhere; }
 .title-page-text { font-family:${fontStack(P.fBody)}; font-size:${P.bodySize}pt; text-align:justify; margin-top:24pt; }
@@ -913,6 +930,42 @@ function renderReferenceToc(data){
   });
   return html+"</div>";
 }
+function tocIllustrationSVG(){
+  let rings="";
+  for(let i=0;i<17;i++){
+    const r=22+i*17;
+    rings+=`<ellipse cx="5" cy="570" rx="${r}" ry="${(r*1.18).toFixed(2)}" ${i%4===2?'stroke-dasharray="9 4"':""}/>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 900" width="100%" height="100%" preserveAspectRatio="none" fill="none">
+  <g stroke="#c6bda6" stroke-width="1" opacity=".75">${rings}<path d="M5 570L103 528L123 518 M62 680L160 716L203 730 M28 375L42 310"/></g>
+  <g stroke="#89966f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M72 888C48 800 132 734 104 650C84 590 40 542 61 478C77 432 56 380 72 280 M104 650C110 530 170 453 177 338C185 236 237 178 275 94 M104 733C181 706 205 736 247 699C280 670 243 618 309 581 M177 338C220 310 251 296 310 299 M203 237C252 208 278 223 337 201 M142 455C99 422 99 388 87 357"/>
+  </g>
+  <g stroke="#89966f" stroke-width="1.3" fill="#eef0e5">
+  <path d="M275 94Q275 68 300 48Q297 78 275 94Z M203 237Q181 216 185 189Q208 207 203 237Z M260 216Q272 189 295 187Q284 211 260 216Z M284 299Q307 276 333 280Q311 301 284 299Z M177 338Q157 309 163 285Q183 312 177 338Z M87 357Q64 336 69 309Q90 329 87 357Z M309 581Q311 550 337 537Q333 566 309 581Z M135 720Q144 690 168 682Q162 710 135 720Z"/>
+  </g></svg>`;
+}
+function renderIllustratedToc(data){
+  let html='<div class="toc toc-illustrated">', lastVolume=null;
+  const digits=Math.max(3,Number(P.pad)||0);
+  const row=(kind,text,key,indent=0)=>`<div class="toc-illustrated-row toc-illustrated-${kind}" style="--toc-indent:${indent}pt"><span class="toc-illustrated-text">${text}</span><span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></div>`;
+  data.chapters.forEach((chapter,ci)=>{
+    let opening="";
+    if(chapter.volume && chapter.volume!==lastVolume){
+      const volume=chapter.volume;
+      opening+=row('volume',`<span class="toc-illustrated-volume-number">${esc(volume.number)}</span>${volume.title?`<span>${esc(volume.title)}</span>`:""}`,`v${volume.id}`);
+    }
+    lastVolume=chapter.volume;
+    if(chapter.title!=null)opening+=row('chapter',esc(chapter.title),`c${ci}_0`,chapter.volume?6:0);
+    const indent=chapter.title!=null?14:chapter.volume?6:0;
+    if(chapter.articles.length)opening+=row('article',esc(chapter.articles[0].title),`a${ci}_0`,indent);
+    if(opening)html+=`<div class="toc-illustrated-start">${opening}</div>`;
+    chapter.articles.slice(1).forEach((article,ai)=>{
+      html+=row('article',esc(article.title),`a${ci}_${ai+1}`,indent);
+    });
+  });
+  return html+'</div>';
+}
 function renderBook(){
   const d = parsedData;
   const out = []; let firstEl = true;
@@ -926,7 +979,9 @@ function renderBook(){
     firstEl = false;
   }
   let tocHtml;
-  if(isReferenceToc()){
+  if(isIllustratedToc()){
+    tocHtml=`<div class="toc-wrap toc-illustrated-wrap${firstEl?"":" break-page"}">${renderIllustratedToc(d)}</div>`;
+  } else if(isReferenceToc()){
     tocHtml=`<div class="toc-wrap toc-reference-wrap${firstEl?"":" break-page"}">${renderReferenceToc(d)}</div>`;
   } else {
   tocHtml = `<div class="toc-wrap${firstEl?"":" break-page"}"><div class="toc">`;
@@ -1069,6 +1124,13 @@ function decoratePage(pg, i, bodyStart){
   if(!sheet) return;
   if(P.cropMarks) addCropMarks(sheet);
   const isRight = pageIsRight(pg);
+  if(isIllustratedToc() && pg.querySelector(".toc-illustrated")){
+    sheet.style.background="#faf8f2";
+    const art=document.createElement("div");art.className="toc-illustrated-art";
+    art.innerHTML=tocIllustrationSVG();sheet.appendChild(art);
+    const heading=document.createElement("div");heading.className="toc-illustrated-heading";
+    heading.textContent=P.tocTitle;sheet.appendChild(heading);
+  }
   if(isReferenceToc() && pg.querySelector(".toc-reference")){
     const frame=document.createElement("div");
     frame.style.cssText=`position:absolute;inset:${P.bleed+Math.min(13,P.pageW*.075,P.pageH*.075)}mm;border:.45pt solid #333;pointer-events:none;z-index:0;`;

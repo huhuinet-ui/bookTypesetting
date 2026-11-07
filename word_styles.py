@@ -117,3 +117,7 @@ def install_styles(full, params, artwork):
             first_sec.right_margin=Mm(book.M_RIGHT+book.BLEED_MM)
             return original_body(doc,chapters,first_sec,*args,**kwargs)
         full.build_body=body_with_margins
+
+    if params.get('tocStyle', '').startswith('版式三'):
+        from word_toc_illustrated import install_illustrated_toc
+        install_illustrated_toc(full, params)
