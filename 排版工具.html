@@ -168,7 +168,7 @@ const GROUPS = [
    {k:"titlePageTitle",l:"扉页标题（留空自动识别）",t:"text",d:""},
    {k:"titlePageText",l:"扉页正文（留空自动读取，支持分段）",t:"textarea",d:""},
    {k:"titlePageAuthor",l:"扉页作者（可留空）",t:"text",d:""},
-   {k:"titlePageSize",l:"扉页书名字号",t:"num",d:28,u:"pt",s:1,min:10,max:72},
+   {k:"titlePageSize",l:"扉页书名字号",t:"num",d:24,u:"pt",s:1,min:10,max:72},
  ]},
  { title:"纸张与页边距", items:[
    {k:"pageW",l:"成品宽",t:"num",d:166,u:"mm",s:1,min:50,max:600},
@@ -219,6 +219,9 @@ const GROUPS = [
    {k:"widowControl",l:"孤行控制",t:"bool",d:true},
    {k:"keepTogether",l:"段中不分页",t:"bool",d:false},
    {k:"subtitleBold",l:"小标题加粗",t:"bool",d:1},
+   {k:"subtitleColor",l:"小标题文字颜色",t:"color",d:"#000000"},
+   {k:"subtitleBgOn",l:"小标题加底色",t:"bool",d:false},
+   {k:"subtitleBgColor",l:"小标题底色",t:"color",d:"#FFF2CC"},
  ]},
  { title:"章节页（篇章页）", items:[
    {k:"chapterStyle",l:"章节页版式",t:"select",d:"版式一：横排居中+铺底色",opts:["版式一：横排居中+铺底色","版式二：白底+线框+竖排标题","版式三：玫瑰线描+竖排引言","版式四：纸飞机线描+竖排引言"]},
@@ -286,11 +289,11 @@ const GROUPS = [
    {k:"tocShowSequence",l:"版式2·显示文章序号",t:"bool",d:false},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
-   {k:"tocEntrySize",l:"条目字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
-   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:13,u:"pt",s:0.5,min:6,max:30},
+   {k:"tocEntrySize",l:"条目字号",t:"num",d:10.5,u:"pt",s:0.5,min:6,max:30},
+   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
    {k:"chapterTocBold",l:"章节条目加粗",t:"bool",d:true},
    {k:"articleIndentPt",l:"文章条目缩进",t:"num",d:24,u:"pt",s:1,min:0,max:100},
-   {k:"entrySpacing",l:"条目行距倍数",t:"num",d:1.6,u:"",s:0.1,min:1,max:3},
+   {k:"entrySpacing",l:"条目行距倍数",t:"num",d:1.2,u:"",s:0.1,min:1,max:3},
    {k:"tocLeader",l:"标题页码间填充",t:"select",d:"空白",opts:["空白","点线","短横线"]},
  ]},
  { title:"书脊宽度", items:[
@@ -465,7 +468,7 @@ function isChap4(){ return String(P.chapterStyle||"").includes("玫瑰"); }
 function isChap2(){ return String(P.chapterStyle||"").indexOf("版式二")===0; }
 
 /* ==================== .md 解析（移植自 book_layout.py） ==================== */
-const PREFACE_KEYS = ["自序","前言","序言","代序","写在前面"];
+const PREFACE_KEYS = ["自序","前言","前沿","序言","代序","写在前面"];
 const AFTERWORD_KEYS = ["后记","跋"];
 const NOTES = ["（这中间是不是接得有点突兀）","（这里感觉缺了什么，但是又不知道怎么去连接得更好）"];
 const END_PUNCT = "。！？!?；;：:…，,、～~”」』）)";
@@ -510,10 +513,26 @@ function resolveImgPath(path){
   }
   return null;
 }
+function normalizeBodyBold(lines){
+  let marked=false;
+  return lines.map(s=>{
+    if(!s || s==="{{" || s==="}}")return s;
+    if(s.startsWith("#") || IMG_RE.test(s) || MD_IMG_RE.test(s) || CAP_RE.test(s)){marked=false;return s;}
+    const before=marked;
+    if((s.match(/\*\*/g)||[]).length%2)marked=!marked;
+    return (before?"**":"")+s+(marked?"**":"");
+  });
+}
 function classify(lines, poem){
   if(poem) return classifyPoem(lines);
-  const ls = lines.map(cleanLine);
+  const ls = normalizeBodyBold(lines.map(cleanLine));
   const items = []; const m = ls.length; let k = 0; let altBlock=false;
+  let lastBodyLine=-2;
+  const appendBody=(kind,text,index)=>{
+    if(index===lastBodyLine+1 && items.length && items[items.length-1][0]===kind)items[items.length-1][1]+="\n"+text;
+    else items.push([kind,text]);
+    lastBodyLine=index;
+  };
   while(k < m){
     const s = ls[k];
     if(!s){ k++; continue; }
@@ -529,13 +548,12 @@ function classify(lines, poem){
     }
     let mdim = MD_IMG_RE.exec(s);
     if(mdim){ items.push(["img", {path:mdim[2].trim(), caption:mdim[1].trim()||null}]); k++; continue; }
-    if(altBlock){items.push(["palt",s]);k++;continue;}
-    if(s.includes("{{")||s.includes("}}")){items.push(["p",s]);k++;continue;}
-    const pb = (k===0 || !ls[k-1]);
-    const nb = (k===m-1 || !ls[k+1]);
+    const bullet=/^-\s+(.+)$/.exec(s);
+    if(bullet){items.push(["li",bullet[1]]);k++;continue;}
+    if(altBlock){appendBody("palt",s,k);k++;continue;}
+    if(s.includes("*")||s.includes("{{")||s.includes("}}")){appendBody("p",s,k);k++;continue;}
     if(/^\d{1,2}$/.test(s)) items.push(["num", s]);
-    else if(pb && nb && s.length>=2 && s.length<=16 && !END_PUNCT.includes(s[s.length-1]) && !"“\"‘「（".includes(s[0])) items.push(["h", s]);
-    else items.push(["p", s]);
+    else appendBody("p",s,k);
     k++;
   }
   return items;
@@ -575,11 +593,11 @@ function parseBook(srcText){
       if(headingKind==="扉页" || (!chapters.length && prefaceTitle===null && titlePageTitle===null && !PREFACE_KEYS.includes(headingKind) && !AFTERWORD_KEYS.includes(headingKind))){
         target=titlePageText;titlePageTitle=kind.replace(/^扉页\s*[:：]\s*/,"");
       }
-      else if(PREFACE_KEYS.includes(headingKind)){ target=preface; prefaceTitle=kind; }
+      else if(PREFACE_KEYS.includes(headingKind)){ target=preface; prefaceTitle=kind.slice(headingKind.length).replace(/^[\s　:：、—–-]+/,"") || (headingKind==="前沿"?"前言":headingKind); }
       else if(AFTERWORD_KEYS.includes(headingKind)){ target=afterword; afterwordTitle=kind; }
       i++;
       if(target===null) continue;
-      while(i<n && !raw[i].trim().startsWith("#")){ if(raw[i].trim()) target.push(raw[i].trim()); i++; }
+      while(i<n && !raw[i].trim().startsWith("#")){ if(raw[i].trim() || target!==titlePageText) target.push(raw[i].trim()); i++; }
       continue;
     }
     if(/^##\s+/.test(s)){
@@ -626,7 +644,7 @@ function parseBook(srcText){
     }
     i++;
   }
-  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n"):null, prefaceTitle, afterword: afterword.length?afterword.join("\n"):null, afterwordTitle, chapters, volumes };
+  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n").trim():null, prefaceTitle, afterword: afterword.length?afterword.join("\n").trim():null, afterwordTitle, chapters, volumes };
 }
 
 /* ==================== 文件与图片 ==================== */
@@ -716,9 +734,9 @@ function buildCSS(){
 .toc-illustrated-row { display:flex; align-items:baseline; gap:8pt; margin:0 0 5pt; padding-left:var(--toc-indent); line-height:${P.entrySpacing}; break-inside:avoid; }
 .toc-illustrated-text { flex:1; min-width:0; overflow-wrap:anywhere; }
 .toc-illustrated .toc-num { flex:0 0 auto; min-width:3ch; text-align:right; font-family:"Times New Roman",serif; font-size:10pt; font-variant-numeric:tabular-nums; }
-.toc-illustrated-volume { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterTocSize+2}pt; margin:18pt 0 12pt; break-after:avoid; }
+.toc-illustrated-volume { font-family:${fontStack(P.fChapterTitle)}; font-size:13pt; margin:18pt 0 12pt; break-after:avoid; }
 .toc-illustrated-volume .toc-num { align-self:flex-end; padding-bottom:3pt; }
-.toc-illustrated-volume-number { display:block; font-size:.8em; margin-bottom:4pt; }
+.toc-illustrated-volume-number { display:block; font-size:13pt; margin-bottom:4pt; }
 .toc-illustrated-chapter { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterTocSize}pt; font-weight:${P.chapterTocBold?"bold":"normal"}; margin-top:10pt; break-after:avoid; }
 .toc-illustrated-article { font-size:${P.tocEntrySize}pt; }
 .toc-illustrated-heading { position:absolute; top:8%; right:8%; writing-mode:vertical-rl; text-orientation:upright; font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; letter-spacing:6pt; line-height:1.3; color:#59604f; }
@@ -732,7 +750,11 @@ function buildCSS(){
 .body,.article,.chapter-page,.front-page,.toc { font-family: ${fontStack(P.fBody)}; font-size: ${P.bodySize}pt; color:#000; }
 .para { text-align:justify; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; text-indent:${P.bodyIndent}em; ${widow} ${keep} }
 .body-alt { font-family:${fontStack(P.fBodyAlt)}; }
+.body-italic { font-style:italic; }
 .mark { color: ${markColor}; font-weight:${P.markMode==="保留加粗"?"bold":"normal"}; }
+.body-list { margin:0; padding-left:${P.bodySize*1.5}pt; list-style-type:disc; }
+.body-list li { margin:0 0 ${P.bodyAfter}pt; line-height:${P.bodyLine}pt; text-indent:0; overflow-wrap:anywhere; }
+.subtitle-text { color:${P.subtitleColor}; background-color:${P.subtitleBgOn?P.subtitleBgColor:"transparent"}; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
 .subtitle { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; font-weight:${P.subtitleBold?"bold":"normal"}; break-after:avoid; }
 .num-line { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; }
 .article-title { font-family:${fontStack(P.fTitle)}; font-size:${P.titleSize}pt; line-height:1.2; margin:0; }
@@ -792,19 +814,35 @@ function buildCSS(){
 `;
 }
 
-function renderPara(text, forceAlt=false){
-  let marked=false,alt=forceAlt,inner="";
-  for(const token of String(text).split(/(\*\*|\{\{|\}\})/)){
-    if(token==="**"){marked=!marked;continue;}
-    if(token==="{{"){alt=true;continue;}
-    if(token==="}}"){alt=false;continue;}
-    if(!token)continue;
-    let fragment=esc(token);
+function renderInline(text, forceAlt=false){
+  const source=String(text), tokens=source.split(/(\\[*]|[*][*]|[*]|[{][{]|[}][}])/);
+  const paired=new Set();let pending=null,offset=0;
+  tokens.forEach((token,index)=>{
+    const start=offset;offset+=token.length;
+    if(token!=="*")return;
+    const before=source[start-1]||"",after=source[start+1]||"";
+    if(pending!==null && before && !/\s/.test(before)){
+      paired.add(pending);paired.add(index);pending=null;
+    }else if(after && !/\s/.test(after))pending=index;
+  });
+  let marked=false,italic=false,alt=forceAlt,inner="";
+  tokens.forEach((token,index)=>{
+    if(token==="**"){marked=!marked;return;}
+    if(token==="*" && paired.has(index)){italic=!italic;return;}
+    if(token==="{{"){alt=true;return;}
+    if(token==="}}"){alt=false;return;}
+    if(!token)return;
+    let plain=token==="\\*"?"*":token;
+    let fragment=esc(plain).replace(/\n/g,"<br>");
     if(alt)fragment=`<span class="body-alt">${fragment}</span>`;
     if(marked)fragment=`<span class="mark">${fragment}</span>`;
+    if(italic)fragment=`<em class="body-italic">${fragment}</em>`;
     inner+=fragment;
-  }
-  return `<div class="para">${inner}</div>`;
+  });
+  return inner;
+}
+function renderPara(text, forceAlt=false){
+  return `<div class="para">${renderInline(text,forceAlt)}</div>`;
 }
 function normalizeCaption(text){
   return String(text).replace(/[\u200b\u200c\u200d\u2060\ufeff]/g,"").replace(/[\t\u00a0\u3000 ]+/g," ").trim();
@@ -861,13 +899,20 @@ function renderImage(path, caption){
 }
 function renderItems(items){
   const out = [];
+  let listOpen=false;
   for(const it of items){
     const kind = it[0], val = it[1];
+    if(kind==="li"){
+      if(!listOpen){out.push('<ul class="body-list">');listOpen=true;}
+      out.push(`<li>${renderInline(val)}</li>`);continue;
+    }
+    if(listOpen){out.push('</ul>');listOpen=false;}
     if(kind==="img") out.push(renderImage(val.path, val.caption));
-    else if(kind==="h") out.push(`<div class="subtitle">${esc(val)}</div>`);
+    else if(kind==="h") out.push(`<div class="subtitle"><span class="subtitle-text">${esc(val)}</span></div>`);
     else if(kind==="num") out.push(`<div class="num-line">${esc(val)}</div>`);
     else out.push(renderPara(val,kind==="palt"));
   }
+  if(listOpen)out.push("</ul>");
   return out.join("\n");
 }
 function renderPoems(items){
@@ -878,8 +923,8 @@ function renderPoems(items){
       if(!first) out.push(`<div class="poem-spacer" style="height:${P.poemTopLines*P.bodyLine}pt"></div>`);
       out.push(`<div class="poem-title${first?"":" break-page"}">${esc(val)}</div>`);
       first = false;
-    } else if(kind==="meta") out.push(`<div class="poem-meta">${esc(val)}</div>`);
-    else if(kind==="poem") out.push(`<div class="poem-line">${esc(val)}</div>`);
+    } else if(kind==="meta") out.push(`<div class="poem-meta">${renderInline(val)}</div>`);
+    else if(kind==="poem") out.push(`<div class="poem-line">${renderInline(val)}</div>`);
     else if(kind==="stanza") out.push(`<div class="poem-stanza"></div>`);
     else if(kind==="img") out.push(renderImage(val.path, val.caption));
   }
@@ -900,7 +945,7 @@ function renderArticle(a, key){
   return parts.join("\n");
 }
 function renderFront(title, text, cls){
-  const paras = (text||"").split("\n").filter(s=>s.trim()).map(p=>renderPara(p)).join("\n");
+  const paras = (text||"").trim().split(/\n[ \t]*\n+/).filter(s=>s.trim()).map(p=>renderPara(p)).join("\n");
   return `<div class="front-page ${cls}"><div style="height:${P.frontTopLines*P.bodyLine}pt"></div><div class="front-title">${esc(title)}</div>${paras}</div>`;
 }
 function renderTocEntry(text, key, size, bold, indentPt){
@@ -1113,21 +1158,27 @@ function postProcess(){
     const n = titlePage[el.getAttribute("data-toc-ref")];
     el.textContent = n ? String(n).padStart(Number(el.dataset.tocPad)||P.pad,"0") : "";
   });
-  pages.forEach((pg,i)=> decoratePage(pg, i, bodyStart));
+  let illustratedTocPage = 0;
+  pages.forEach((pg,i)=>{
+    const tocIndex = isIllustratedToc() && pg.querySelector('.toc-illustrated') ? illustratedTocPage++ : -1;
+    decoratePage(pg, i, bodyStart, tocIndex);
+  });
   document.getElementById("stInfo").textContent = `共 ${pages.length} 页 · 正文从第 ${Math.max(0,bodyStart+1)} 页起`;
   document.getElementById("stPage").textContent = `正文 ${Object.keys(titlePage).length} 项已标页`;
   updateSpineEstimate();
 }
 function pageIsRight(pg){ return pg.classList.contains("pagedjs_right_page") || pg.classList.contains("pagedjs_first_page"); }
-function decoratePage(pg, i, bodyStart){
+function decoratePage(pg, i, bodyStart, tocIndex=-1){
   const sheet = pg.querySelector(".pagedjs_sheet");
   if(!sheet) return;
   if(P.cropMarks) addCropMarks(sheet);
   const isRight = pageIsRight(pg);
   if(isIllustratedToc() && pg.querySelector(".toc-illustrated")){
     sheet.style.background="#faf8f2";
-    const art=document.createElement("div");art.className="toc-illustrated-art";
-    art.innerHTML=tocIllustrationSVG();sheet.appendChild(art);
+    if(tocIndex % 2 === 0){
+      const art=document.createElement("div");art.className="toc-illustrated-art";
+      art.innerHTML=tocIllustrationSVG();sheet.appendChild(art);
+    }
     const heading=document.createElement("div");heading.className="toc-illustrated-heading";
     heading.textContent=P.tocTitle;sheet.appendChild(heading);
   }
@@ -1294,13 +1345,16 @@ async function exportPDF(){
       document.getElementById("stInfo").textContent=`正在生成 PDF：${i+1} / ${sheets.length} 页`;
       await new Promise(resolve=>requestAnimationFrame(resolve));
       const sheet=sheets[i];
+      const sheetColor=getComputedStyle(sheet).backgroundColor;
+      // JPEG has no alpha channel: transparent paper must be painted white.
+      const paperColor=sheetColor==="transparent" || sheetColor==="rgba(0, 0, 0, 0)" ? "#ffffff" : sheetColor;
       await Promise.all([...sheet.querySelectorAll("img")].map(im=>im.decode()));
       // Export each sheet separately; UI scroll position and preview zoom do not
       // change its physical dimensions. Sequential canvases limit peak memory.
       const canvas=await htmlToImage.toCanvas(sheet,{
         width:sheet.offsetWidth,height:sheet.offsetHeight,pixelRatio:(fast?150:300)/96,
-        backgroundColor:getComputedStyle(sheet).backgroundColor,skipFonts:true,
-        style:{margin:"0",transform:"none",zoom:"1",boxShadow:"none",isolation:"isolate",position:"relative",zIndex:"0"}
+        backgroundColor:paperColor,skipFonts:true,
+        style:{margin:"0",transform:"none",zoom:"1",boxShadow:"none",isolation:"isolate",position:"relative",zIndex:"0",backgroundColor:paperColor}
       });
       const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("页面图像生成失败")),fast?"image/jpeg":"image/png",.95));
       const image=fast?await pdf.embedJpg(await blob.arrayBuffer()):await pdf.embedPng(await blob.arrayBuffer());

@@ -142,7 +142,7 @@ ALT_OPEN, ALT_CLOSE = "{{", "}}"
 #   一整段　　：{{把整段用大括号包起来}}
 #   连续多段　：单独一行写 {{  开始，单独一行写 }}  结束，中间所有段落整体用特殊字体
 # 可与 **着色** 叠加使用。想换分隔符就改 ALT_OPEN / ALT_CLOSE。
-_MARK_TOKEN_RE = re.compile("(" + "|".join(re.escape(t) for t in ("**", ALT_OPEN, ALT_CLOSE)) + ")")
+_MARK_TOKEN_RE = re.compile("(" + "|".join(re.escape(t) for t in ("\\*", "**", "*", ALT_OPEN, ALT_CLOSE)) + ")")
 
 # ---- 分页控制（解决「一页只剩一两行字」的孤行）----
 WIDOW_CONTROL = True
@@ -154,6 +154,9 @@ KEEP_TOGETHER = False
 
 # ---- 小标题（文章内的小节标题，如「目标感治好了我的矫情」）----
 SUBTITLE_BOLD = True
+SUBTITLE_COLOR = RGBColor(0, 0, 0)
+SUBTITLE_BG_ON = False
+SUBTITLE_BG_COLOR = "FFF2CC"
 # 小标题是否加粗。True=加粗左对齐（和正文同字号 9 磅）。
 
 # ---- 章节页（篇章页）----
@@ -259,17 +262,38 @@ def add_anchor(p, token):
 
 
 def R(p, text, cn=None, size=None, color=BLACK, bold=False,
-      underline=False, af="Times New Roman"):
+      underline=False, af="Times New Roman", italic=False):
     if cn is None: cn = F_BODY
     if size is None: size = BODY_SIZE
     r = p.add_run(text)
     r.font.name = af
     r.font.size = Pt(size)
     r.font.bold = bold
+    r.font.italic = italic
     r.font.underline = underline
     r.font.color.rgb = color
     r._element.rPr.rFonts.set(qn("w:eastAsia"), cn)
     return r
+
+
+def add_bullet_para(p, text):
+    # Word's native list style retains editable bullets and hanging indentation.
+    p.style = 'List Bullet'
+    set_para(p, LEFT, 0, BODY_AFTER, BODY_LINE)
+    p.paragraph_format.left_indent = Pt(BODY_SIZE * 1.5)
+    p.paragraph_format.first_line_indent = Pt(-BODY_SIZE * 1.5)
+    add_body_para(p, text)
+
+
+def add_subtitle(p, text):
+    run = R(p, text, cn=F_BODY, size=BODY_SIZE, bold=SUBTITLE_BOLD,
+            color=SUBTITLE_COLOR)
+    if SUBTITLE_BG_ON:
+        shading = OxmlElement('w:shd')
+        shading.set(qn('w:val'), 'clear')
+        shading.set(qn('w:fill'), SUBTITLE_BG_COLOR)
+        run._r.get_or_add_rPr().append(shading)
+    return run
 
 
 def add_body_para(p, text, cn=None, alt_cn=None, size=None, alt_open=False):
@@ -283,18 +307,36 @@ def add_body_para(p, text, cn=None, alt_cn=None, size=None, alt_open=False):
     if alt_cn is None:
         alt_cn = F_BODY_ALT
     mark_color = (MARK_COLOR if MARK_COLOR is not None else BOOK_COLOR) if MARK_COLOR_ON else BLACK
-    colored, alt, buf = False, alt_open, []
+    colored, italic, alt, buf = False, False, alt_open, []
+    tokens = _MARK_TOKEN_RE.split(text)
+    paired, pending, offset = set(), None, 0
+    for index, token in enumerate(tokens):
+        start = offset
+        offset += len(token)
+        if token != "*":
+            continue
+        before = text[start-1] if start else ""
+        after = text[start+1] if start+1 < len(text) else ""
+        if pending is not None and before and not before.isspace():
+            paired.update((pending, index))
+            pending = None
+        elif after and not after.isspace():
+            pending = index
 
     def flush():
         if buf:
             R(p, "".join(buf), cn=(alt_cn if alt else cn), size=size,
               color=(mark_color if colored and MARK_MODE == "color" else BLACK),
-              bold=(colored and MARK_MODE == "bold"))
+              bold=(colored and MARK_MODE == "bold"), italic=italic)
             buf.clear()
 
-    for tok in _MARK_TOKEN_RE.split(text):
+    for index, tok in enumerate(tokens):
         if tok == "**":
             flush(); colored = not colored
+        elif tok == "*" and index in paired:
+            flush(); italic = not italic
+        elif tok == "\\*":
+            buf.append("*")
         elif tok == ALT_OPEN:
             flush(); alt = True
         elif tok == ALT_CLOSE:
@@ -629,6 +671,31 @@ def caption_no_orphans(text):
     return re.sub(r"[\t\u00a0\u3000 ]+", " ", text).strip()
 
 
+def word_image_source(path):
+    """Keep supported images intact; normalize browser-only formats in memory."""
+    from docx.image.image import Image as WordImage
+    try:
+        WordImage.from_file(path)
+        return path
+    except FileNotFoundError:
+        raise RuntimeError('找不到插图：' + str(path)) from None
+    except Exception:
+        try:
+            from PIL import Image, ImageOps
+            with Image.open(path) as image:
+                image = ImageOps.exif_transpose(image)
+                image = image.convert('RGBA' if 'A' in image.getbands() or 'transparency' in image.info else 'RGB')
+                output = io.BytesIO()
+                image.save(output, format='PNG', dpi=(96, 96))
+            output.seek(0)
+            WordImage.from_file(output)
+            output.seek(0)
+            return output
+        except Exception as error:
+            raise RuntimeError('Word 无法读取插图：' + str(path) +
+                               '。请将该图片另存为 PNG 或 JPEG 后重新导入。详情：' + str(error)) from None
+
+
 def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
     """插图：图片居中；图片底下可衬色块（IMG_BLOCK_*）；图注可加折线引线（IMG_LINE_*）。"""
     if max_width_cm is None:
@@ -643,7 +710,7 @@ def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
     if page_break:
         p.paragraph_format.page_break_before = True
     r = p.add_run()
-    r.add_picture(path, width=Cm(w_cm))
+    r.add_picture(word_image_source(path), width=Cm(w_cm))
     left_pt = (text_w_pt - w_pt) / 2
 
     if IMG_BLOCK_ON:
@@ -692,7 +759,7 @@ def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
 NOTES = ["（这中间是不是接得有点突兀）",
          "（这里感觉缺了什么，但是又不知道怎么去连接得更好）"]
 END_PUNCT = "。！？!?；;：:…，,、～~”」』）)"
-PREFACE_KEYS = ("自序", "前言", "序言", "代序", "写在前面")   # 单 # 开头 → 前言页（目录之前）
+PREFACE_KEYS = ("自序", "前言", "前沿", "序言", "代序", "写在前面")   # 单 # 开头 → 前言页（目录之前）
 AFTERWORD_KEYS = ("后记", "跋")                              # 单 # 开头 → 后记页（正文之后）
 IMG_RE = re.compile(r"^图片\s*[:：]\s*(.+)$")
 CAP_RE = re.compile(r"^图片名\s*[:：]\s*(.+)$")
@@ -714,15 +781,44 @@ def _resolve_img(path, base_dir):
     return os.path.normpath(os.path.join(base_dir, path))
 
 
+def normalize_body_bold(lines):
+    """Close and reopen emphasis at paragraph boundaries without editing the source."""
+    marked = False
+    result = []
+    for s in lines:
+        if not s or s in (ALT_OPEN, ALT_CLOSE):
+            result.append(s)
+            continue
+        if s.startswith("#") or IMG_RE.match(s) or MD_IMG_RE.match(s) or CAP_RE.match(s):
+            marked = False
+            result.append(s)
+            continue
+        before = marked
+        if s.count("**") % 2:
+            marked = not marked
+        result.append(("**" if before else "") + s + ("**" if marked else ""))
+    return result
+
+
 def classify(lines, base_dir=None, poem=False):
     """把一篇文章的正文行分类成 items 列表：
     ('p', text) 正文段（可含 {{特殊字体}} 行内标记）  ('palt', text) 整段特殊字体（{{ }} 块内）  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图
     poem=True 时改用诗歌规则：('h' 诗题) ('meta' 副题/日期) ('poem' 诗句) ('stanza' 诗节分隔)"""
     if poem:
         return _classify_poem(lines, base_dir)
-    ls = [clean_line(s) for s in lines]
+    ls = normalize_body_bold([clean_line(s) for s in lines])
     items, m, k = [], len(ls), 0
     in_alt = False   # 是否处在「连续多段特殊字体」块内（由单独成行的 {{ / }} 开关）
+    last_body_line = -2
+
+    def append_body(kind, text, index):
+        nonlocal last_body_line
+        if index == last_body_line + 1 and items and items[-1][0] == kind:
+            items[-1] = (kind, items[-1][1] + "\n" + text)
+        else:
+            items.append((kind, text))
+        last_body_line = index
+
     while k < m:
         s = ls[k]
         if not s:
@@ -756,22 +852,23 @@ def classify(lines, base_dir=None, poem=False):
             items.append(("img", (path, caption)))
             k += 1
             continue
+        bullet = re.match(r"^-\s+(.+)$", s)
+        if bullet:
+            items.append(("li", bullet.group(1)))
+            k += 1
+            continue
         if in_alt:                       # 处在块内：整段用特殊字体（保留段内可能出现的 {{}} 也无妨）
-            items.append(("palt", s))
+            append_body("palt", s, k)
             k += 1
             continue
-        if (ALT_OPEN in s) or (ALT_CLOSE in s):   # 段内混排：交给 add_body_para 拆分 {{}}，且不当作小标题
-            items.append(("p", s))
+        if "*" in s or (ALT_OPEN in s) or (ALT_CLOSE in s):
+            append_body("p", s, k)
             k += 1
             continue
-        pb = (k == 0 or not ls[k - 1])
-        nb = (k == m - 1 or not ls[k + 1])
         if re.fullmatch(r"\d{1,2}", s):
             items.append(("num", s))
-        elif pb and nb and 2 <= len(s) <= 16 and s[-1] not in END_PUNCT and s[0] not in "“\"‘「（":
-            items.append(("h", s))
         else:
-            items.append(("p", s))
+            append_body("p", s, k)
         k += 1
     return items
 
@@ -859,7 +956,8 @@ def parse_book(src=None):
                 target = title_page
                 title_page_title = re.sub(r"^扉页\s*[:：]\s*", "", kind)
             elif heading_kind in PREFACE_KEYS:
-                target, preface_title = preface, kind
+                target = preface
+                preface_title = kind[len(heading_kind):].lstrip(" \t　:：、—–-") or ("前言" if heading_kind == "前沿" else heading_kind)
             elif heading_kind in AFTERWORD_KEYS:
                 target, afterword_title = afterword, kind
             else:
@@ -868,7 +966,7 @@ def parse_book(src=None):
             if target is None:
                 continue
             while i < n and not raw[i].strip().startswith("#"):
-                if raw[i].strip():
+                if raw[i].strip() or target is not title_page:
                     target.append(raw[i].strip())
                 i += 1
             continue
@@ -935,9 +1033,9 @@ def parse_book(src=None):
     return {
         "title_page": "\n".join(title_page) if title_page else None,
         "title_page_title": title_page_title,
-        "preface": "\n".join(preface) if preface else None,
+        "preface": "\n".join(preface).strip() if preface else None,
         "preface_title": preface_title,
-        "afterword": "\n".join(afterword) if afterword else None,
+        "afterword": "\n".join(afterword).strip() if afterword else None,
         "afterword_title": afterword_title,
         "chapters": chapters,
         "volumes": volumes,
@@ -1041,7 +1139,9 @@ def build_article(doc, art, first, recto=True, anchor=None):
         if kind == "h":
             set_para(p, LEFT, 0, BODY_AFTER, BODY_LINE)
             p.paragraph_format.keep_with_next = True   # 小标题与下一段正文同页，不单独落在页尾
-            R(p, text, cn=F_BODY, size=BODY_SIZE, bold=SUBTITLE_BOLD)
+            add_subtitle(p, text)
+        elif kind == "li":
+            add_bullet_para(p, text)
         elif kind == "p":
             set_para(p, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
             add_body_para(p, text)
@@ -1074,14 +1174,14 @@ def _render_poems(doc, items):
         elif kind == "meta":
             p = doc.add_paragraph()
             set_para(p, CENTER, 0, POEM_META_AFTER, 1.0)
-            R(p, text, cn=F_BODY, size=POEM_META_SIZE)
+            add_body_para(p, text, cn=F_BODY, size=POEM_META_SIZE)
             stanza = False
         elif kind == "poem":
             p = doc.add_paragraph()
             set_para(p, CENTER, 0, 0, POEM_LINE)
             if stanza:
                 p.paragraph_format.space_before = Pt(POEM_STANZA_GAP)
-            R(p, text, cn=F_BODY, size=POEM_LINE_SIZE)
+            add_body_para(p, text, cn=F_BODY, size=POEM_LINE_SIZE)
             stanza = False
         elif kind == "stanza":
             stanza = True
@@ -1133,7 +1233,7 @@ def add_chapter_page(doc, title, intro=None, anchor=None):
         add_textbox(doc, intro, font=F_CHAPTER_INTRO)
 
 
-def add_title_page(doc, title, author="", size=28, text=""):
+def add_title_page(doc, title, author="", size=24, text=""):
     """独立扉页：书名与可选作者居中；页眉由调用方置空。"""
     p = doc.add_paragraph()
     # Place the title in the upper middle of the finished page.
@@ -1166,7 +1266,7 @@ def add_front_page(doc, title, text):
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 18, 1.0)
     R(p, title, cn=F_TITLE, size=FRONT_SIZE, bold=True)
-    for para in (text or "").split("\n"):
+    for para in re.split(r"\n[ \t]*\n+", (text or "").strip()):
         if not para.strip():
             continue
         bp = doc.add_paragraph()

@@ -169,7 +169,10 @@ class Handler(BaseHTTPRequestHandler):
                 config.write_text(json.dumps(dict(source=str(source), output=str(output), root=str(root), name=data['name'], params=data['params'], chapterArtwork=artwork), ensure_ascii=False), encoding='utf-8')
                 result = subprocess.run([sys.executable, str(ROOT / 'word_worker.py'), str(config)], cwd=ROOT, capture_output=True, timeout=1800)
                 if result.returncode:
-                    raise RuntimeError((result.stderr or result.stdout).decode('utf-8', 'replace')[-4000:])
+                    details = (result.stderr or result.stdout).decode('utf-8', 'replace')
+                    # Show the actual cause before the stack so browser dialogs keep it visible.
+                    cause = details.rsplit('RuntimeError: ', 1)[-1].strip()
+                    raise RuntimeError(cause[-4000:])
                 content = output.read_bytes()
                 if len(content) <= CACHE_LIMIT:
                     EXPORT_CACHE[cache_key] = content

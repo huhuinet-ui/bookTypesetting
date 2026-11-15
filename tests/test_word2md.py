@@ -146,6 +146,40 @@ class Word2MarkdownBoldTests(unittest.TestCase):
         text, _ = self.convert_document(doc)
         self.assertEqual(text, "前文**链接文字**后文\n")
 
+    def test_missing_default_paragraph_style_keeps_body_and_bold(self):
+        doc = Document()
+        para = doc.add_paragraph('普通正文，')
+        para.add_run('保留加粗').bold = True
+        para.add_run('，继续正文。')
+        doc.styles.element.remove(doc.styles['Normal'].element)
+        self.assertIsNone(para.style)
+        text, _ = self.convert_document(doc)
+        self.assertEqual(text, '普通正文，**保留加粗**，继续正文。\n')
+
+    def test_undefined_paragraph_style_does_not_abort_conversion(self):
+        doc = Document()
+        para = doc.add_paragraph('未定义样式的正文。')
+        para._p.style = 'MissingBodyStyle'
+        doc.styles.element.remove(doc.styles['Normal'].element)
+        self.assertIsNone(para.style)
+        text, _ = self.convert_document(doc)
+        self.assertEqual(text, '未定义样式的正文。\n')
+
+    def test_image_and_caption_work_without_default_paragraph_style(self):
+        doc = Document()
+        png = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
+            'AAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='
+        )
+        doc.add_paragraph().add_run().add_picture(io.BytesIO(png))
+        doc.add_paragraph()
+        caption = doc.add_paragraph('图注：样式缺失的图注')
+        doc.styles.element.remove(doc.styles['Normal'].element)
+        self.assertIsNone(caption.style)
+        text, images = self.convert_document(doc)
+        self.assertEqual(images, 1)
+        self.assertEqual(text, '![样式缺失的图注](图/img1.png)\n')
+
 
 if __name__ == "__main__":
     unittest.main()

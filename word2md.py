@@ -7,6 +7,7 @@
 - 按 Word 标题样式识别结构：标题3→### 章节、标题4→#### 文章、标题5→##### 小节
 - 「自序/前言/序」这类标题4 → # 前言
 - 正文加粗片段 → **文字**，保留直接加粗及字符/段落样式继承的加粗
+- 正文斜体片段 → *文字*
 - 图片自动提取到「图/」子文件夹，生成 ![图注](图/imgN.png)
 - 图注：支持跳过图片后的空段落、同段说明及“图片说明：/图注：/图1：”等写法；下一段若为「图：xxx」「图1-1：xxx」或 Word 题注样式，自动取为图注
   （带编号的「图1-1：xxx」整行保留，含编号）
@@ -24,7 +25,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.text.run import Run
 
-PREFACE_KEYS = ("自序", "前言", "序言", "代序", "写在前面")
+PREFACE_KEYS = ("自序", "前言", "前沿", "序言", "代序", "写在前面")
 IMG_EXT = {"jpeg": "jpg", "jpe": "jpg"}
 
 # 开关：把「整段被【】包起来」的行识别成正文小标题（输出 #####，去掉【】）。默认关闭。
@@ -49,6 +50,11 @@ def caption_text(para):
     return text.replace("\u2060", "").replace("\ufeff", "")
 
 
+def paragraph_style_name(para):
+    """Some documents lack a default style or reference an undefined style."""
+    return getattr(para.style, "name", "") or ""
+
+
 def find_caption(paras, index):
     """Skip empty paragraphs, never cross an intervening table, heading or image."""
     previous = paras[index]
@@ -58,7 +64,7 @@ def find_caption(paras, index):
             return None, index
         if candidate._p.find(".//"+qn("a:blip")) is not None:
             return None, index
-        if heading_level(candidate.style.name or ""):
+        if heading_level(paragraph_style_name(candidate)):
             return None, index
         text = caption_text(candidate)
         if text:
@@ -72,7 +78,7 @@ def match_caption(para):
     t = caption_text(para)
     if not t:
         return None
-    if CAP_STYLE_RE.search(para.style.name or ""):
+    if CAP_STYLE_RE.search(paragraph_style_name(para)):
         return t
     if CAP_NUM_RE.match(t):          # 图1-1：xxx —— 整行都要（编号是图注的一部分）
         return t
@@ -102,12 +108,13 @@ def paragraph_runs(para):
     return [Run(node, para) for node in para._p.xpath("./w:r | ./w:hyperlink/w:r")]
 
 
-def effective_bold(run, para):
+def effective_bold(run, para, property_name="bold"):
     """Resolve direct formatting and Word's toggle properties in style chains."""
-    if run.bold is not None:
-        return run.bold  # Explicit False must override inherited bold too.
+    direct = getattr(run, property_name)
+    if direct is not None:
+        return direct  # Explicit False must override inherited formatting too.
     defaults = para.part.document.styles.element.xpath(
-        "./w:docDefaults/w:rPrDefault/w:rPr/w:b"
+        "./w:docDefaults/w:rPrDefault/w:rPr/w:" + ("b" if property_name == "bold" else "i")
     )
     bold = bool(defaults and defaults[0].val)
     for style in (para.style, run.style):
@@ -117,7 +124,7 @@ def effective_bold(run, para):
             chain.append(style)
             style = style.base_style
         for ancestor in reversed(chain):
-            if ancestor.font.bold:
+            if getattr(ancestor.font, property_name):
                 bold = not bold
     return bold
 
@@ -128,21 +135,55 @@ def paragraph_markdown(para):
     for run in paragraph_runs(para):
         if not run.text:
             continue
-        bold = effective_bold(run, para)
-        if groups and groups[-1][0] == bold:
+        formatting = (effective_bold(run, para), effective_bold(run, para, "italic"))
+        if groups and groups[-1][0] == formatting:
             groups[-1][1] += run.text
         else:
-            groups.append([bold, run.text])
+            groups.append([formatting, run.text])
     parts = []
-    for bold, text in groups:
-        if bold:
-            # Keep edge whitespace outside **, and close markers on line breaks.
+    for (bold, italic), text in groups:
+        marker = ('**' if bold else '') + ('*' if italic else '')
+        if marker:
             text = "\n".join(
-                re.sub(r"^(\s*)(\S(?:.*\S)?)(\s*)$", r"\1**\2**\3", line)
+                re.sub(r"^(\s*)(\S(?:.*\S)?)(\s*)$",
+                       lambda m: m[1] + marker + m[2] + marker + m[3], line)
                 for line in text.split("\n")
             )
         parts.append(text)
     return "".join(parts).strip()
+
+
+def extracted_image(blip, blob, ext):
+    """Bake EXIF orientation and this picture's Word rotation into PNG pixels."""
+    picture = blip
+    while picture is not None and picture.tag != qn('pic:pic'):
+        picture = picture.getparent()
+    transform = picture.find('./' + qn('pic:spPr') + '/' + qn('a:xfrm')) if picture is not None else None
+    rotation = float(transform.get('rot', '0')) / 60000 if transform is not None else 0
+    flip_h = transform is not None and transform.get('flipH', '').lower() in ('1', 'true', 'on')
+    flip_v = transform is not None and transform.get('flipV', '').lower() in ('1', 'true', 'on')
+    from PIL import Image, ImageOps
+    # Leave unmodified images byte-for-byte intact, including vector formats.
+    try:
+        with Image.open(io.BytesIO(blob)) as source:
+            orientation = source.getexif().get(274, 1)
+            if not (rotation % 360 or flip_h or flip_v or orientation not in (1, None)):
+                return blob, ext
+            image = ImageOps.exif_transpose(source).convert('RGBA')
+            if flip_h:
+                image = ImageOps.mirror(image)
+            if flip_v:
+                image = ImageOps.flip(image)
+            if rotation % 360:
+                # DrawingML uses clockwise angles; Pillow uses counterclockwise.
+                image = image.rotate(-rotation, expand=True)
+            output = io.BytesIO()
+            image.save(output, format='PNG')
+            return output.getvalue(), 'png'
+    except Exception as error:
+        if rotation % 360 or flip_h or flip_v:
+            raise RuntimeError('无法保留 Word 图片的旋转方向，请将该图片另存为 PNG 后重新插入。' + str(error)) from None
+        return blob, ext
 
 
 def convert(src, out=None, bracket_subtitle=None):
@@ -163,7 +204,7 @@ def convert(src, out=None, bracket_subtitle=None):
     while i < n:
         p = paras[i]
         text = p.text.strip()
-        style = p.style.name
+        style = paragraph_style_name(p)
 
         # 图片段落：提取到 图/imgN.png，生成 ![](图/imgN.png)；下一段是图注（图：xxx / 图1-1：xxx / 题注样式）
         blip = p._p.find(".//" + qn("a:blip"))
@@ -173,10 +214,11 @@ def convert(src, out=None, bracket_subtitle=None):
             if part is not None:
                 ext = part.content_type.split("/")[-1].lower()
                 ext = IMG_EXT.get(ext, ext)
+                blob, ext = extracted_image(blip, part.blob, ext)
                 img_no += 1
                 fn = f"img{img_no}.{ext}"
                 with open(os.path.join(img_dir, fn), "wb") as f:
-                    f.write(part.blob)
+                    f.write(blob)
                 # Prefer explicit same-paragraph caption; otherwise scan past blanks.
                 inline_caption = match_caption(p) if text else None
                 caption = inline_caption
@@ -204,6 +246,8 @@ def convert(src, out=None, bracket_subtitle=None):
                 if bm:
                     t = bm.group(1).strip()
             if level == 4 and any(t.startswith(key) for key in PREFACE_KEYS):
+                if t.startswith("前沿"):
+                    t = "前言" + t[len("前沿"):]
                 lines.append(f"# {t}")
             else:
                 lines.append(f"{'#' * level} {t}")

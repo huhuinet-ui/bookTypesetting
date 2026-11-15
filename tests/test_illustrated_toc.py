@@ -27,38 +27,77 @@ class IllustratedTocTests(unittest.TestCase):
             pages['文章{}'.format(number)] = number * 3 + 1
         doc = Document()
         self.adapter().build_toc(doc, data['chapters'], pages)
-        texts = [p.text for p in doc.paragraphs]
+        texts = [row.cells[0].text + '\t' + row.cells[1].text for row in doc.tables[0].rows]
         self.assertIn('卷一\n回望来路\t001', texts)
         self.assertIn('第二卷\n向远方去\t015', texts)
         self.assertIn('第4章 章节4\t012', texts)
         self.assertIn('文章4\t013', texts)
         self.assertEqual(len(texts), 14)  # Two volumes, six chapters, six articles.
-        self.assertEqual(len(doc.tables), 0)
-        self.assertTrue(all(p.paragraph_format.keep_together for p in doc.paragraphs))
-        self.assertTrue(doc.paragraphs[0].paragraph_format.keep_with_next)
-        self.assertFalse(doc.paragraphs[2].paragraph_format.keep_with_next)
+        self.assertEqual(len(doc.tables), 1)
+        self.assertTrue(all(cell.paragraphs[0].paragraph_format.keep_together for row in doc.tables[0].rows for cell in row.cells))
+        self.assertTrue(doc.tables[0].rows[0].cells[0].paragraphs[0].paragraph_format.keep_with_next)
+        self.assertFalse(doc.tables[0].rows[2].cells[0].paragraphs[0].paragraph_format.keep_with_next)
+
+    def test_default_font_sizes_and_line_spacing(self):
+        doc = Document()
+        data = self.parse(fixtures.volume_manuscript())
+        self.adapter().build_toc(doc, data['chapters'], {})
+        rows = doc.tables[0].rows
+        volume_runs = [r for r in rows[0].cells[0].paragraphs[0].runs if r.text.strip()]
+        self.assertEqual([r.font.size.pt for r in volume_runs], [13, 13])
+        self.assertEqual(rows[1].cells[0].paragraphs[0].runs[0].font.size.pt, 12)
+        self.assertEqual(rows[2].cells[0].paragraphs[0].runs[0].font.size.pt, 10.5)
+        for row in rows:
+            for cell in row.cells:
+                self.assertAlmostEqual(cell.paragraphs[0].paragraph_format.line_spacing, 1.2)
+            self.assertEqual(row.cells[1].paragraphs[0].runs[0].font.size.pt, 10)
 
     def test_without_volumes_and_without_chapters(self):
         full = self.adapter()
         data = self.parse('#### 一篇文章\n\n作者：张三\n\n正文。')
         doc = Document()
         full.build_toc(doc, data['chapters'], {'一篇文章': 1})
-        self.assertEqual([p.text for p in doc.paragraphs], ['一篇文章\t001'])
-        self.assertEqual(doc.paragraphs[0].paragraph_format.left_indent.pt, 0)
+        self.assertEqual([row.cells[0].text + '\t' + row.cells[1].text for row in doc.tables[0].rows], ['一篇文章\t001'])
+        self.assertEqual(doc.tables[0].rows[0].cells[0].paragraphs[0].paragraph_format.left_indent.pt, 0)
 
-    def test_page_art_and_vertical_title_repeat_in_both_headers(self):
+    def test_art_alternates_while_background_and_title_repeat(self):
         full = self.adapter()
         doc = Document()
         full.build_toc(doc, [], {})
         section = doc.sections[0]
-        for header in (section.header, section.even_page_header):
+        for index, header in enumerate((section.header, section.even_page_header)):
             ellipses = list(header._element.iter('{urn:schemas-microsoft-com:vml}oval'))
-            self.assertEqual(len(ellipses), 17)
+            self.assertEqual(len(ellipses), 17 if index == 0 else 0)
             self.assertIn('layout-flow:vertical-ideographic', header._element.xml)
             self.assertIn('目录', header._element.xml)
             self.assertIn('fillcolor="#faf8f2"', header._element.xml)
+        from docx.oxml.ns import qn
+        self.assertEqual(section._sectPr.find(qn('w:pgNumType')).get(qn('w:start')), '1')
+        self.assertTrue(doc.settings.odd_and_even_pages_header_footer)
         width = book.PAGE_W + book.BLEED_MM * 2
-        self.assertAlmostEqual(section.left_margin.mm, width * .49, places=1)
+        self.assertAlmostEqual(section.left_margin.mm, width * .08, places=1)
+        self.assertAlmostEqual(section.right_margin.mm, section.left_margin.mm, places=1)
+        self.assertIn('tblInd', doc.tables[0]._tbl.xml)
+
+    def test_long_titles_keep_page_numbers_in_separate_fixed_columns(self):
+        import io
+        from docx.oxml.ns import qn
+        title = '很长的文章标题用于验证换行时不会挤乱右侧页码' * 4
+        chapters = [{'title': None, 'articles': [{'title': title} for _ in range(45)]}]
+        doc = Document()
+        self.adapter().build_toc(doc, chapters, {title: 1234})
+        stream = io.BytesIO()
+        doc.save(stream)
+        stream.seek(0)
+        loaded = Document(stream)
+        table = loaded.tables[0]
+        self.assertFalse(table.autofit)
+        self.assertEqual(len(table.rows), 45)
+        for row in table.rows:
+            self.assertEqual(row.cells[0].text, title)
+            self.assertEqual(row.cells[1].text, '1234')
+            self.assertIsNotNone(row._tr.trPr.find(qn('w:cantSplit')))
+            self.assertNotIn('\t', row.cells[0].text)
 
     def test_body_does_not_inherit_toc_art_or_column_margins(self):
         full = self.adapter()

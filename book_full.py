@@ -40,7 +40,7 @@ TITLE_PAGE_FROM_SOURCE = True             # 使用开篇一级标题及正文，
 TITLE_PAGE_TEXT = ""                      # 自定义扉页正文，留空时按开关读取书稿
 TITLE_PAGE_TITLE = ""                     # 留空使用书名
 TITLE_PAGE_AUTHOR = ""                    # 扉页作者，可留空
-TITLE_PAGE_SIZE = 28                      # 扉页书名字号（磅）
+TITLE_PAGE_SIZE = 24                      # 扉页书名字号（磅）
 TOC_TITLE = "目录"                          # 目录页大标题
 
 # ---- 目录里章节/文章行的样式 ----

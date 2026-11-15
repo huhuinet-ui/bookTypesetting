@@ -1,7 +1,8 @@
 """Native, editable right-column TOC with repeated tree-ring/leaf line art."""
 import html
 
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
@@ -45,14 +46,19 @@ def add_illustrated_header(section, book, title, title_size):
         {rings}<v:shape style="position:absolute;width:420;height:900" coordsize="420,900" path="{branch}" filled="f" strokecolor="#89966f" strokeweight="1pt"/>{leaves}
         </v:group>
         <v:rect id="{ident}_title" style="{position}margin-left:{titlex}pt;margin-top:{titley}pt;width:{titlew}pt;height:{titleh}pt;z-index:1" filled="f" stroked="f">
-        <v:textbox inset="0,0,0,0" style="layout-flow:vertical-ideographic"><w:txbxContent><w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="312" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="{font}"/><w:color w:val="59604F"/><w:sz w:val="{size}"/><w:spacing w:val="120"/></w:rPr><w:t>{title}</w:t></w:r></w:p></w:txbxContent></v:textbox>
+        <v:textbox inset="0,0,0,0" style="layout-flow:vertical-ideographic"><w:txbxContent><w:p><w:pPr><w:textDirection w:val="tbRl"/><w:spacing w:before="0" w:after="0" w:line="312" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="{font}"/><w:color w:val="59604F"/><w:sz w:val="{size}"/><w:spacing w:val="120"/></w:rPr><w:t>{title}</w:t></w:r></w:p></w:txbxContent></v:textbox>
         </v:rect></w:pict>'''.format(
             ident=ident, position=position, width=width, height=height,
             top=height*.14, artw=width*.48, arth=height*.78,
             rings=''.join(rings), branch=branch, leaves=leaf_xml,
             titlex=width*.84, titley=height*.08, titlew=width*.08, titleh=height*.18,
             font=html.escape(book.F_TITLE, quote=True), size=round(title_size*2), title=html.escape(title))
-        header.paragraphs[0].add_run()._r.append(parse_xml(xml))
+        pict = parse_xml(xml)
+        if index == 1:
+            # Even pages within the TOC retain paper color and title, without art.
+            for group in list(pict.iter('{urn:schemas-microsoft-com:vml}group')):
+                group.getparent().remove(group)
+        header.paragraphs[0].add_run()._r.append(pict)
 
 
 def install_illustrated_toc(full, params):
@@ -60,43 +66,90 @@ def install_illustrated_toc(full, params):
 
     def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
         section = doc.sections[-1]
+        doc.settings.odd_and_even_pages_header_footer = True
+        section.different_first_page_header_footer = False
+        # Count from the first TOC page, independently of cover/preface length.
+        page_number = section._sectPr.find(qn('w:pgNumType'))
+        if page_number is None:
+            page_number = OxmlElement('w:pgNumType')
+            section._sectPr.append(page_number)
+        page_number.set(qn('w:start'), '1')
         width_mm = book.PAGE_W + 2 * book.BLEED_MM
         height_mm = book.PAGE_H + 2 * book.BLEED_MM
         section.top_margin = Mm(height_mm*.26)
         section.bottom_margin = Mm(height_mm*.10)
-        section.left_margin = Mm(width_mm*.49)
+        section.left_margin = Mm(width_mm*.08)
         section.right_margin = Mm(width_mm*.08)
         add_illustrated_header(section, book, full.TOC_TITLE, params.get('tocTitleSize', 20))
         text_width = width_mm*.43
-        chapter_size = float(params.get('chapterTocSize', 13))
-        article_size = float(params.get('tocEntrySize', 12))
+        chapter_size = float(params.get('chapterTocSize', 12))
+        article_size = float(params.get('tocEntrySize', 10.5))
         digits = max(3, int(params.get('pad', 3)))
+        # Equal margins neutralize the document-wide mirrored margins on verso pages.
+        # The table itself reserves the illustration area on every TOC page.
+        table = doc.add_table(rows=0, cols=2)
+        table.autofit = False
+        number_width = max(18, digits * 5) + 8
+        content_width = text_width * 72 / 25.4
+        widths = (content_width - number_width, number_width)
+        for column, width in zip(table.columns, widths):
+            column.width = Pt(width)
+        props = table._tbl.tblPr
+        table_width = props.find(qn('w:tblW'))
+        table_width.set(qn('w:type'), 'dxa')
+        table_width.set(qn('w:w'), str(round(content_width*20)))
+        indent = OxmlElement('w:tblInd')
+        indent.set(qn('w:w'), str(round(width_mm*.41*72/25.4*20)))
+        indent.set(qn('w:type'), 'dxa')
+        props.append(indent)
+        borders = OxmlElement('w:tblBorders')
+        for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            element = OxmlElement('w:' + edge)
+            element.set(qn('w:val'), 'nil')
+            borders.append(element)
+        props.append(borders)
+        margins = OxmlElement('w:tblCellMar')
+        for edge in ('top', 'left', 'bottom', 'right'):
+            element = OxmlElement('w:' + edge)
+            element.set(qn('w:w'), '0')
+            element.set(qn('w:type'), 'dxa')
+            margins.append(element)
+        props.append(margins)
+
 
         def entry(text, key, kind, indent=0, number=None):
-            p = doc.add_paragraph()
+            row = table.add_row()
+            cant_split = OxmlElement('w:cantSplit')
+            row._tr.get_or_add_trPr().append(cant_split)
+            for cell, width in zip(row.cells, widths):
+                cell.width = Pt(width)
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.BOTTOM if kind == 'volume' else WD_CELL_VERTICAL_ALIGNMENT.TOP
+            p = row.cells[0].paragraphs[0]
+            page_p = row.cells[1].paragraphs[0]
             pf = p.paragraph_format
             pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
             pf.space_before = Pt(18 if kind == 'volume' else 10 if kind == 'chapter' else 0)
             pf.space_after = Pt(12 if kind == 'volume' else 5)
-            pf.line_spacing = float(params.get('entrySpacing', 1.6))
+            pf.line_spacing = float(params.get('entrySpacing', 1.2))
             pf.keep_together = True
             pf.keep_with_next = kind != 'article'
             pf.left_indent = Pt(indent)
-            pf.right_indent = Pt(digits*6+8)
-            pf.tab_stops.add_tab_stop(Mm(text_width), WD_TAB_ALIGNMENT.RIGHT)
+            pf.right_indent = Pt(8)
+            for attr in ('space_before', 'space_after', 'line_spacing', 'keep_together', 'keep_with_next'):
+                setattr(page_p.paragraph_format, attr, getattr(pf, attr))
+            page_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             snap = OxmlElement('w:snapToGrid'); snap.set(qn('w:val'), '0')
             p._p.get_or_add_pPr().append(snap)
-            size = chapter_size+2 if kind == 'volume' else chapter_size if kind == 'chapter' else article_size
+            size = 13 if kind == 'volume' else chapter_size if kind == 'chapter' else article_size
             font = book.F_CHAPTER_TITLE if kind != 'article' else book.F_BODY
             if number:
-                book.R(p, number, cn=font, size=size*.8, color=RGBColor.from_string('454D42'))
+                book.R(p, number, cn=font, size=size, color=RGBColor.from_string('454D42'))
                 if text:
                     p.add_run('\n')
             book.R(p, text, cn=font, size=size, bold=kind == 'chapter' and full.CHAPTER_TOC_BOLD,
                    color=RGBColor.from_string('454D42'))
-            p.add_run('\t')
             page = page_map.get(key)
-            book.R(p, str(page).zfill(digits) if page else '', size=10, color=RGBColor.from_string('454D42'))
+            book.R(page_p, str(page).zfill(digits) if page else '', size=10, color=RGBColor.from_string('454D42'))
 
         last_volume = None
         for chapter in chapters:

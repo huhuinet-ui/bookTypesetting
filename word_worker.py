@@ -39,6 +39,10 @@ def main():
     full.book.MARK_COLOR = RGBColor.from_string(str(p.get("markTargetColor", p.get("bookColor", "#DEB887"))).lstrip("#"))
     full.book.BOOK_COLOR = RGBColor.from_string(p["bookColor"].lstrip("#"))
     full.book.RULE_COLOR = p["ruleColor"].lstrip("#")
+    full.book.SUBTITLE_COLOR = RGBColor.from_string(str(p.get("subtitleColor", "#000000")).lstrip("#"))
+    full.book.SUBTITLE_BG_ON = bool(p.get("subtitleBgOn", False))
+    full.book.SUBTITLE_BG_COLOR = str(p.get("subtitleBgColor", "#FFF2CC")).lstrip("#")
+
     if p.get("imgStyle", "").startswith("简洁居中"):
         full.book.IMG_BLOCK_ON = full.book.IMG_LINE_ON = False
     for key, attr in {"tocTitle":"TOC_TITLE", "chapterTocSize":"CHAPTER_TOC_SIZE", "chapterTocBold":"CHAPTER_TOC_BOLD", "articleIndentPt":"ARTICLE_INDENT_PT"}.items():
@@ -52,7 +56,7 @@ def main():
     full.TITLE_PAGE_TEXT = str(p.get("titlePageText", ""))
     full.TITLE_PAGE_TITLE = str(p.get("titlePageTitle", ""))
     full.TITLE_PAGE_AUTHOR = str(p.get("titlePageAuthor", ""))
-    full.TITLE_PAGE_SIZE = max(10, min(72, float(p.get("titlePageSize", 28))))
+    full.TITLE_PAGE_SIZE = max(10, min(72, float(p.get("titlePageSize", 24))))
     full.book.SRC = full.SRC
     # Uploaded manuscripts may reference only uploaded files, never local disk paths.
     root = Path(config["root"]).resolve()
