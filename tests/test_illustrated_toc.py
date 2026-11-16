@@ -74,10 +74,27 @@ class IllustratedTocTests(unittest.TestCase):
         from docx.oxml.ns import qn
         self.assertEqual(section._sectPr.find(qn('w:pgNumType')).get(qn('w:start')), '1')
         self.assertTrue(doc.settings.odd_and_even_pages_header_footer)
-        width = book.PAGE_W + book.BLEED_MM * 2
-        self.assertAlmostEqual(section.left_margin.mm, width * .08, places=1)
+        width = book.PAGE_W + book.page_inset() * 2
+        self.assertAlmostEqual(section.left_margin.mm, book.page_inset() + max(10, book.M_RIGHT), places=1)
         self.assertAlmostEqual(section.right_margin.mm, section.left_margin.mm, places=1)
         self.assertIn('tblInd', doc.tables[0]._tbl.xml)
+
+    def test_trim_size_and_safe_area_match_body_for_custom_paper(self):
+        from unittest.mock import patch
+        from docx.oxml.ns import qn
+        for width, height, bleed in ((140, 200, 3), (166, 226, 3), (140, 210, 5), (180, 240, 0)):
+            with patch.object(book, 'PAGE_W', width), patch.object(book, 'PAGE_H', height), patch.object(book, 'BLEED_MM', bleed):
+                doc = Document()
+                self.adapter().build_toc(doc, [], {})
+                section = doc.sections[0]
+                self.assertAlmostEqual(section.page_width.mm, width+2*(bleed+book.PRINT_MARGIN_MM), places=1)
+                self.assertAlmostEqual(section.page_height.mm, height+2*(bleed+book.PRINT_MARGIN_MM), places=1)
+                table = doc.tables[0]
+                indent_mm = int(table._tbl.tblPr.find(qn('w:tblInd')).get(qn('w:w'))) / 20 * 25.4 / 72
+                table_width_mm = sum(col.width.mm for col in table.columns)
+                right_edge = section.left_margin.mm + indent_mm + table_width_mm
+                self.assertAlmostEqual(right_edge, book.page_inset()+width-max(10,book.M_RIGHT), places=1)
+                self.assertGreaterEqual(section.bottom_margin.mm, book.page_inset()+book.M_BOT-.1)
 
     def test_long_titles_keep_page_numbers_in_separate_fixed_columns(self):
         import io
@@ -105,7 +122,7 @@ class IllustratedTocTests(unittest.TestCase):
         full.build_toc(doc, [], {})
         body = doc.add_section(WD_SECTION.ODD_PAGE)
         self.assertEqual(full.build_body(doc, [], body), 'body')
-        self.assertAlmostEqual(body.left_margin.mm, book.M_LEFT + book.BLEED_MM, places=1)
+        self.assertAlmostEqual(body.left_margin.mm, book.M_LEFT + book.page_inset(), places=1)
         for header in (body.header, body.even_page_header):
             self.assertNotIn('toc3_', header._element.xml)
         self.assertIn('toc3_', doc.sections[0].header._element.xml)

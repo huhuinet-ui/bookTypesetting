@@ -9,8 +9,12 @@ from docx.shared import Mm, Pt, RGBColor
 
 
 def add_illustrated_header(section, book, title, title_size):
-    width = (book.PAGE_W + 2 * book.BLEED_MM) * 72 / 25.4
-    height = (book.PAGE_H + 2 * book.BLEED_MM) * 72 / 25.4
+    width = (book.PAGE_W + 2 * book.page_inset()) * 72 / 25.4
+    height = (book.PAGE_H + 2 * book.page_inset()) * 72 / 25.4
+    bleed = book.page_inset() * 72 / 25.4
+    trim_w = book.PAGE_W * 72 / 25.4
+    trim_h = book.PAGE_H * 72 / 25.4
+    safe_right = max(10, book.M_RIGHT) * 72 / 25.4
     rings = []
     for index in range(17):
         radius = 22 + index * 17
@@ -42,16 +46,16 @@ def add_illustrated_header(section, book, title, title_size):
         xml = '''<w:pict xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
         xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
         <v:rect id="{ident}_background" o:allowincell="f" style="{position}margin-left:0pt;margin-top:0pt;width:{width}pt;height:{height}pt;z-index:-251658240" fillcolor="#faf8f2" stroked="f"/>
-        <v:group id="{ident}_art" o:allowincell="f" coordsize="420,900" style="{position}margin-left:0pt;margin-top:{top}pt;width:{artw}pt;height:{arth}pt;z-index:-10">
+        <v:group id="{ident}_art" o:allowincell="f" coordsize="420,900" style="{position}margin-left:{bleed}pt;margin-top:{top}pt;width:{artw}pt;height:{arth}pt;z-index:-10">
         {rings}<v:shape style="position:absolute;width:420;height:900" coordsize="420,900" path="{branch}" filled="f" strokecolor="#89966f" strokeweight="1pt"/>{leaves}
         </v:group>
         <v:rect id="{ident}_title" style="{position}margin-left:{titlex}pt;margin-top:{titley}pt;width:{titlew}pt;height:{titleh}pt;z-index:1" filled="f" stroked="f">
         <v:textbox inset="0,0,0,0" style="layout-flow:vertical-ideographic"><w:txbxContent><w:p><w:pPr><w:textDirection w:val="tbRl"/><w:spacing w:before="0" w:after="0" w:line="312" w:lineRule="auto"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="{font}"/><w:color w:val="59604F"/><w:sz w:val="{size}"/><w:spacing w:val="120"/></w:rPr><w:t>{title}</w:t></w:r></w:p></w:txbxContent></v:textbox>
         </v:rect></w:pict>'''.format(
             ident=ident, position=position, width=width, height=height,
-            top=height*.14, artw=width*.48, arth=height*.78,
+            bleed=bleed, top=bleed+trim_h*.14, artw=trim_w*.48, arth=trim_h*.78,
             rings=''.join(rings), branch=branch, leaves=leaf_xml,
-            titlex=width*.84, titley=height*.08, titlew=width*.08, titleh=height*.18,
+            titlex=bleed+trim_w-safe_right-trim_w*.08, titley=bleed+trim_h*.08, titlew=trim_w*.08, titleh=trim_h*.18,
             font=html.escape(book.F_TITLE, quote=True), size=round(title_size*2), title=html.escape(title))
         pict = parse_xml(xml)
         if index == 1:
@@ -74,14 +78,20 @@ def install_illustrated_toc(full, params):
             page_number = OxmlElement('w:pgNumType')
             section._sectPr.append(page_number)
         page_number.set(qn('w:start'), '1')
-        width_mm = book.PAGE_W + 2 * book.BLEED_MM
-        height_mm = book.PAGE_H + 2 * book.BLEED_MM
-        section.top_margin = Mm(height_mm*.26)
-        section.bottom_margin = Mm(height_mm*.10)
-        section.left_margin = Mm(width_mm*.08)
-        section.right_margin = Mm(width_mm*.08)
+        width_mm = book.PAGE_W + 2 * book.page_inset()
+        height_mm = book.PAGE_H + 2 * book.page_inset()
+        section.page_width = Mm(width_mm)
+        section.page_height = Mm(height_mm)
+        safe_right = max(10, book.M_RIGHT)
+        shift_left = max(0, min(20, float(params.get("toc3ShiftLeft", 5))))
+        extra_width = max(0, min(20, float(params.get("toc3ExtraWidth", 5)), safe_right+shift_left-10))
+        column_margin = safe_right + shift_left - extra_width
+        section.top_margin = Mm(book.page_inset() + max(book.PAGE_H*.26, book.M_TOP))
+        section.bottom_margin = Mm(book.page_inset() + max(book.PAGE_H*.10, book.M_BOT))
+        section.left_margin = Mm(book.page_inset() + column_margin)
+        section.right_margin = Mm(book.page_inset() + column_margin)
         add_illustrated_header(section, book, full.TOC_TITLE, params.get('tocTitleSize', 20))
-        text_width = width_mm*.43
+        text_width = book.PAGE_W*.51 - safe_right + extra_width
         chapter_size = float(params.get('chapterTocSize', 12))
         article_size = float(params.get('tocEntrySize', 10.5))
         digits = max(3, int(params.get('pad', 3)))
@@ -99,7 +109,7 @@ def install_illustrated_toc(full, params):
         table_width.set(qn('w:type'), 'dxa')
         table_width.set(qn('w:w'), str(round(content_width*20)))
         indent = OxmlElement('w:tblInd')
-        indent.set(qn('w:w'), str(round(width_mm*.41*72/25.4*20)))
+        indent.set(qn('w:w'), str(round((book.PAGE_W*.49-column_margin-shift_left)*72/25.4*20)))
         indent.set(qn('w:type'), 'dxa')
         props.append(indent)
         borders = OxmlElement('w:tblBorders')
@@ -166,10 +176,10 @@ def install_illustrated_toc(full, params):
     original_body = full.build_body
 
     def body_with_margins(doc, chapters, first_sec, *args, **kwargs):
-        first_sec.top_margin = Mm(book.M_TOP+book.BLEED_MM)
-        first_sec.bottom_margin = Mm(book.M_BOT+book.BLEED_MM)
-        first_sec.left_margin = Mm(book.M_LEFT+book.BLEED_MM)
-        first_sec.right_margin = Mm(book.M_RIGHT+book.BLEED_MM)
+        first_sec.top_margin = Mm(book.M_TOP+book.page_inset())
+        first_sec.bottom_margin = Mm(book.M_BOT+book.page_inset())
+        first_sec.left_margin = Mm(book.M_LEFT+book.page_inset())
+        first_sec.right_margin = Mm(book.M_RIGHT+book.page_inset())
         # TOC artwork belongs only to its section, including when a body section
         # initially inherits the TOC's header references.
         for header in (first_sec.header, first_sec.even_page_header):

@@ -64,16 +64,21 @@ OUT_DIR = os.path.dirname(os.path.abspath(SRC))
 # OUT_DIR：生成的 Word 文件保存到哪个文件夹（默认和源文件放一起），一般不用改。
 
 # ---- 纸张与页边距 ----
-PAGE_W, PAGE_H = 166, 226
-# 纸张大小（毫米）：宽 166 × 高 226，约等于 16 开大小的书。这是裁切后的「成品尺寸」。
+PAGE_W, PAGE_H = 140, 200
+# 纸张大小（毫米）：宽 140 × 高 200。这是裁切后的「成品尺寸」。
 BLEED_MM = 3
+PRINT_MARGIN_MM = 10
+
+def page_inset():
+    return BLEED_MM + PRINT_MARGIN_MM
+
 # 出血量（毫米）：0=不加出血（屏幕看/普通打印）；送印厂付印时改成 3。
-# 设成 3 后页面自动从 166×226 变 172×232、边距同步外扩，正文位置不变，全书底色/插图能铺满到边、裁切后不留白边。
-M_TOP, M_BOT = 45, 33
-# 页边距（毫米）：上边距 45、下边距 33，即页面上下边缘到正文的距离（参考《秀茹的一生》实测）。
-M_LEFT, M_RIGHT = 40, 32
-# 页边距（毫米）：内侧 40（装订/书脊一侧）、外侧 32。镜像页边距已开启：奇数页内侧在左、偶数页内侧在右。
-HEADER_DIST = 24
+# 页面包含成品、四边出血及标记留白，默认 140×200 + 2×(3+10) = 166×226 mm。
+M_TOP, M_BOT = 32, 20
+# 相对成品裁切线的页边距：上 32、下 20 mm。
+M_LEFT, M_RIGHT = 27, 19
+# 相对成品裁切线的页边距：内侧 27、外侧 19 mm，左右页镜像。
+HEADER_DIST = 11
 # 页眉位置：页眉文字距离页面顶部 24 毫米（参考《秀茹的一生》实测）。
 
 # ---- 字体（需要电脑里装了这些字体才生效，否则 Word 会用宋体替代显示）----
@@ -98,13 +103,12 @@ RULE_W, RULE_COLOR, RULE_PT = 2.54, "000000", 0.5
 # 标题下面的那条横线：宽 2.54 厘米、黑色(#000000)、粗细 0.5 磅。
 TITLE_BODY_GAP_LINES = 3
 # 标题（含横线、作者名）到正文之间空几行：0=紧挨着，几就是空几行。
-DECO_W, DECO_H = 34, 73
-# 装饰矩形（标题左侧的竖条色块）：宽 34 磅 × 高 73 磅。填充色=书籍主色调(BOOK_COLOR)。
-DECO_X = 28.35
-# 装饰矩形左边 距成品左边缘 10mm（28.35 磅，参考《秀茹的一生》实测，位于装订侧页边距内）。
-# 镜像：奇数页(右页)装订边在左→色块在左；偶数页(左页)装订边在右→色块翻到右。由 book_full.py 按真实页码判定。
-DECO_TOP = 177.17
-# 装饰矩形顶边 距成品顶边缘 62.5mm（177.17 磅），比标题顶高约 2.7mm（参考《秀茹的一生》实测）。
+DECO_W, DECO_H = 34.02, 72.57
+# 外侧装饰矩形约 12 × 25.6 mm，填充色为书籍主色调。
+DECO_X = -8.5
+# 距成品外边缘 -3 mm：伸入出血区。右页在右、左页在左。
+DECO_TOP = 140.31
+# 距成品顶端 49.5 mm，由参考 PDF 的 62.5 mm 减去 13 mm 裁切偏移。
 
 # ---- 书籍主色调（统一控制：作者名、章节页底色、标题装饰矩形）----
 # 已用色清单（给不同学员配色时避开这些、别撞色；换色后请在此追加一行）：
@@ -443,7 +447,7 @@ def deco_x(recto):
 
 def add_deco_rect(p, x_pt, y_pt, w_pt, h_pt, fill_hex):
     """在页面绝对位置画一个填充矩形（锚定在 p 段落，相对页面定位，置于文字下方）"""
-    offset = BLEED_MM * 72 / 25.4   # 出血时坐标整体偏移一个出血量，保持和文字的相对位置
+    offset = page_inset() * 72 / 25.4   # 出血时坐标整体偏移一个出血量，保持和文字的相对位置
     x_pt += offset
     y_pt += offset
     vml = ('<w:pict xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
@@ -463,8 +467,8 @@ def add_deco_rect(p, x_pt, y_pt, w_pt, h_pt, fill_hex):
 def add_page_background(sec, color_hex):
     """给这一节的所有页面加整页底色：在页眉段落里锚定 VML 矩形，相对页面定位、置于文字下方。
     奇数页、偶数页页眉各放一份（开奇偶页眉后篇章页可能落在偶数页）。"""
-    w_pt = (PAGE_W + 2 * BLEED_MM) * 72 / 25.4 + 16
-    h_pt = (PAGE_H + 2 * BLEED_MM) * 72 / 25.4 + 16
+    w_pt = (PAGE_W + 2 * page_inset()) * 72 / 25.4 + 16
+    h_pt = (PAGE_H + 2 * page_inset()) * 72 / 25.4 + 16
     for hdr in (sec.header, sec.even_page_header):
         p = hdr.paragraphs[0]
         vml = (
@@ -499,24 +503,36 @@ def _crop_rect(p, x_pt, y_pt, w_pt, h_pt, color_hex, idx):
     run._r.append(parse_xml(vml))
 
 
+def add_print_margin(sec):
+    """Keep the external marks area white, above page artwork."""
+    m = PRINT_MARGIN_MM
+    if m <= 0:
+        return
+    w, h = PAGE_W + 2*page_inset(), PAGE_H + 2*page_inset()
+    strips = ((0,0,w,m),(0,h-m,w,m),(0,0,m,h),(w-m,0,m,h))
+    for hdr in (sec.header, sec.even_page_header):
+        for index, (x,y,width,height) in enumerate(strips):
+            _crop_rect(hdr.paragraphs[0], x*72/25.4, y*72/25.4, width*72/25.4, height*72/25.4, 'FFFFFF', 'margin'+str(index))
+
+
 def add_crop_marks(sec):
     """每页四角加裁切角线（供印刷裁切定位）：每条线=细黑线压在粗白线(挖空)上。
     坐标按参考书《秀茹的一生》角线实测：距成品边 10/13mm、黑 0.1mm 白 0.5mm。"""
     if not CROP_MARKS:
         return
-    W, H = PAGE_W, PAGE_H
-    lines = [
-        (10, 13, 0, 13), (13, 10, 13, 0), (13, 10, 3, 10), (10, 13, 10, 3),                      # 左上
-        (W - 10, 13, W, 13), (W - 13, 10, W - 13, 0), (W - 13, 10, W - 3, 10), (W - 10, 13, W - 10, 3),  # 右上
-        (10, H - 13, 0, H - 13), (13, H - 10, 13, H), (13, H - 10, 3, H - 10), (10, H - 13, 10, H - 3),  # 左下
-        (W - 10, H - 13, W, H - 13), (W - 13, H - 10, W - 13, H), (W - 13, H - 10, W - 3, H - 10), (W - 10, H - 13, W - 10, H - 3),  # 右下
-    ]
+    W, H = PAGE_W + 2*page_inset(), PAGE_H + 2*page_inset()
+    inset, margin = page_inset(), PRINT_MARGIN_MM
+    lines = []
+    for right in (False, True):
+        for bottom in (False, True):
+            x, y = (W-inset if right else inset), (H-inset if bottom else inset)
+            lines.append((W-margin if right else 0, y, W if right else margin, y))
+            lines.append((x, H-margin if bottom else 0, x, H if bottom else margin))
     M = 72 / 25.4   # 毫米 → 磅
     idx = 0
     for hdr in (sec.header, sec.even_page_header):
         p = hdr.paragraphs[0]
         for (x1, y1, x2, y2) in lines:
-            x1 += BLEED_MM; y1 += BLEED_MM; x2 += BLEED_MM; y2 += BLEED_MM
             if abs(y2 - y1) < 1e-6:   # 横线
                 x0, y0, L = min(x1, x2), y1, abs(x2 - x1)
                 idx += 1; _crop_rect(p, x0 * M, (y0 - CROP_WHITE_W / 2) * M, L * M, CROP_WHITE_W * M, "FFFFFF", idx)
@@ -1056,11 +1072,11 @@ def new_doc():
     uf = OxmlElement("w:updateFields"); uf.set(qn("w:val"), "true"); settings.append(uf)
     sec = doc.sections[0]
     # 页面 = 成品尺寸 + 四周出血；边距也同步外扩一个出血量，正文相对裁切线位置不变
-    sec.page_width = Mm(PAGE_W + 2 * BLEED_MM); sec.page_height = Mm(PAGE_H + 2 * BLEED_MM)
-    sec.top_margin = Mm(M_TOP + BLEED_MM); sec.bottom_margin = Mm(M_BOT + BLEED_MM)
-    sec.left_margin = Mm(M_LEFT + BLEED_MM); sec.right_margin = Mm(M_RIGHT + BLEED_MM)
-    sec.header_distance = Mm(HEADER_DIST + BLEED_MM)
-    sec.footer_distance = Mm(15 + BLEED_MM)
+    sec.page_width = Mm(PAGE_W + 2 * page_inset()); sec.page_height = Mm(PAGE_H + 2 * page_inset())
+    sec.top_margin = Mm(M_TOP + page_inset()); sec.bottom_margin = Mm(M_BOT + page_inset())
+    sec.left_margin = Mm(M_LEFT + page_inset()); sec.right_margin = Mm(M_RIGHT + page_inset())
+    sec.header_distance = Mm(HEADER_DIST + page_inset())
+    sec.footer_distance = Mm(15 + page_inset())
     for g in sec._sectPr.findall(qn("w:docGrid")):
         sec._sectPr.remove(g)
     return doc, sec
@@ -1278,6 +1294,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     doc, sec = new_doc()
     setup_header(sec)
+    add_print_margin(sec)
     add_crop_marks(sec)
     data = parse_book()
     articles = [a for ch in data["chapters"] for a in ch["articles"]]

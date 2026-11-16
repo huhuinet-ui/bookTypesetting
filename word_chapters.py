@@ -31,8 +31,8 @@ def install_chapters(full, params, artwork):
     second=style.startswith('版式二')
     plane='纸飞机' in style or style.startswith('版式五')
     prefix='chapter5' if plane else 'chapter4'
-    W=(book.PAGE_W+2*book.BLEED_MM)*72/25.4
-    H=(book.PAGE_H+2*book.BLEED_MM)*72/25.4
+    W=(book.PAGE_W+2*book.page_inset())*72/25.4
+    H=(book.PAGE_H+2*book.page_inset())*72/25.4
     original_background=book.add_page_background
     background = (params.get('bookColor', '#DEB887') if params.get('chapterBgFollowTheme', True)
                   else params.get('chapter4Bg', '#DFE9C9'))
@@ -80,7 +80,7 @@ def install_chapters(full, params, artwork):
             xml+='</v:rect></w:pict>'
             paragraph.add_run()._r.append(parse_xml(xml))
         if second:
-            inset=(book.BLEED_MM+params.get('chapter2Inset',13))*72/25.4
+            inset=(book.page_inset()+params.get('chapter2Inset',13))*72/25.4
             shape(inset,inset,W-2*inset,H-2*inset,border=params.get('bookColor','#DEB887'))
             if artwork:shape(0,0,W,H,image=artwork[0])
             size=params.get('chapter2TitleSize',18)

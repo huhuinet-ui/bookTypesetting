@@ -14,12 +14,12 @@ def install_styles(full, params, artwork):
         def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
             # Match the browser's dedicated reference-TOC page margins.
             section=doc.sections[-1]
-            section.top_margin=Mm((book.PAGE_H+2*book.BLEED_MM)*.185)
-            section.bottom_margin=Mm((book.PAGE_H+2*book.BLEED_MM)*.15)
-            section.left_margin=Mm((book.PAGE_W+2*book.BLEED_MM)*107.7/484.724)
-            section.right_margin=Mm((book.PAGE_W+2*book.BLEED_MM)*(484.724-389.7)/484.724)
-            width=(book.PAGE_W+2*book.BLEED_MM)*(389.7-107.7)/484.724
-            scale=(book.PAGE_W+2*book.BLEED_MM)/(484.724*25.4/72)
+            section.top_margin=Mm((book.PAGE_H+2*book.page_inset())*.185)
+            section.bottom_margin=Mm((book.PAGE_H+2*book.page_inset())*.15)
+            section.left_margin=Mm((book.PAGE_W+2*book.page_inset())*107.7/484.724)
+            section.right_margin=Mm((book.PAGE_W+2*book.page_inset())*(484.724-389.7)/484.724)
+            width=(book.PAGE_W+2*book.page_inset())*(389.7-107.7)/484.724
+            scale=(book.PAGE_W+2*book.page_inset())/(484.724*25.4/72)
             row_size=10*scale
             chapter_size=13.45*scale
             row_pitch=20*scale
@@ -111,10 +111,10 @@ def install_styles(full, params, artwork):
         original_body=full.build_body
         def body_with_margins(doc, chapters, first_sec, *args, **kwargs):
             # add_section inherits TOC margins; restore normal body geometry.
-            first_sec.top_margin=Mm(book.M_TOP+book.BLEED_MM)
-            first_sec.bottom_margin=Mm(book.M_BOT+book.BLEED_MM)
-            first_sec.left_margin=Mm(book.M_LEFT+book.BLEED_MM)
-            first_sec.right_margin=Mm(book.M_RIGHT+book.BLEED_MM)
+            first_sec.top_margin=Mm(book.M_TOP+book.page_inset())
+            first_sec.bottom_margin=Mm(book.M_BOT+book.page_inset())
+            first_sec.left_margin=Mm(book.M_LEFT+book.page_inset())
+            first_sec.right_margin=Mm(book.M_RIGHT+book.page_inset())
             return original_body(doc,chapters,first_sec,*args,**kwargs)
         full.build_body=body_with_margins
 

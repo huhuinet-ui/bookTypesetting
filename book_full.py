@@ -272,6 +272,9 @@ def main():
     if data["afterword"] is not None:  # 最后一篇文章后插后记页
         add_front_matter(doc, data["afterword_title"], data["afterword"])
 
+    for sec in doc.sections:
+        book.add_print_margin(sec)
+
     if book.CROP_MARKS:                # 每页四角加裁切角线
         for sec in doc.sections:
             book.add_crop_marks(sec)
