@@ -45,8 +45,8 @@ class IllustratedTocTests(unittest.TestCase):
         rows = doc.tables[0].rows
         volume_runs = [r for r in rows[0].cells[0].paragraphs[0].runs if r.text.strip()]
         self.assertEqual([r.font.size.pt for r in volume_runs], [13, 13])
-        self.assertEqual(rows[1].cells[0].paragraphs[0].runs[0].font.size.pt, 12)
-        self.assertEqual(rows[2].cells[0].paragraphs[0].runs[0].font.size.pt, 10.5)
+        self.assertEqual(rows[1].cells[0].paragraphs[0].runs[0].font.size.pt, 10.5)
+        self.assertEqual(rows[2].cells[0].paragraphs[0].runs[0].font.size.pt, 9.5)
         for row in rows:
             for cell in row.cells:
                 self.assertAlmostEqual(cell.paragraphs[0].paragraph_format.line_spacing, 1.2)

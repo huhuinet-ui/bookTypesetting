@@ -20,25 +20,27 @@ def install_styles(full, params, artwork):
             section.right_margin=Mm((book.PAGE_W+2*book.page_inset())*(484.724-389.7)/484.724)
             width=(book.PAGE_W+2*book.page_inset())*(389.7-107.7)/484.724
             scale=(book.PAGE_W+2*book.page_inset())/(484.724*25.4/72)
-            row_size=10*scale
-            chapter_size=13.45*scale
-            row_pitch=20*scale
+            row_size=float(params.get("tocEntrySize", 9.5))
+            chapter_size=float(params.get("chapterTocSize", 10.5))
+            row_pitch=max(20*scale, row_size*1.3)
+            page_shift=max(0,min(20,float(params.get("toc2PageShiftLeft",5))))
+            title_size=float(params.get("tocTitleSize", 20))
             # Two explicit compact paragraphs avoid Word expanding a soft line break
             # with inherited paragraph-mark formatting or document-grid settings.
             title=doc.add_paragraph()
             english_line=doc.add_paragraph()
-            for paragraph, size, after in ((title,10.57*scale,0),(english_line,9.13*scale,42*scale)):
+            for paragraph, size, after in ((title,title_size,0),(english_line,9.13*scale,42*scale)):
                 paragraph.alignment=WD_ALIGN_PARAGRAPH.RIGHT
                 pf=paragraph.paragraph_format
                 pf.space_before=Pt(0);pf.space_after=Pt(after)
-                pf.line_spacing=Pt(13*scale);pf.keep_with_next=True
+                pf.line_spacing=Pt(max(13*scale,size*1.2));pf.keep_with_next=True
                 ppr=paragraph._p.get_or_add_pPr()
                 snap=OxmlElement('w:snapToGrid');snap.set(qn('w:val'),'0');ppr.append(snap)
                 # Format the paragraph mark too, so no larger Normal font sets its height.
                 rpr=OxmlElement('w:rPr')
                 sz=OxmlElement('w:sz');sz.set(qn('w:val'),str(round(size*2)));rpr.append(sz)
                 ppr.append(rpr)
-            full.toc.R(title, full.TOC_TITLE, 10.57*scale, bold=False)
+            full.toc.R(title, full.TOC_TITLE, title_size, bold=False)
             english=english_line.add_run('Content');english.font.name='Times New Roman'
             english.font.size=Pt(9.13*scale)
             last_volume = None
@@ -58,7 +60,7 @@ def install_styles(full, params, artwork):
                 indent_pt=10*scale if volume else 0
                 if chapter['title'] is not None:
                     p=doc.add_paragraph();pf=p.paragraph_format
-                    pf.space_before=Pt(20*scale);pf.space_after=Pt(17*scale);pf.line_spacing=Pt(19*scale)
+                    pf.space_before=Pt(20*scale);pf.space_after=Pt(17*scale);pf.line_spacing=Pt(max(19*scale, chapter_size*1.3))
                     pf.keep_with_next=True
                     pf.left_indent=Pt(indent_pt)
                     full.toc.R(p, chapter['title'], chapter_size, bold=full.CHAPTER_TOC_BOLD)
@@ -66,10 +68,12 @@ def install_styles(full, params, artwork):
                 show_sequence=bool(params.get("tocShowSequence",False))
                 table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False
                 sequence_mm=23*scale*25.4/72
-                row_width=width-indent_pt*25.4/72
-                widths=[sequence_mm,row_width-sequence_mm-width*.34,width*.34] if show_sequence else [row_width-width*.34,width*.34]
+                row_width=width-indent_pt*25.4/72-page_shift
+                meta_width=row_width*.34
+                widths=[sequence_mm,row_width-sequence_mm-meta_width,meta_width] if show_sequence else [row_width-meta_width,meta_width]
                 for column,w in zip(table.columns,widths):column.width=Mm(w)
                 props=table._tbl.tblPr
+                table_width=props.find(qn("w:tblW"));table_width.set(qn("w:type"),"dxa");table_width.set(qn("w:w"),str(round(row_width*72/25.4*20)))
                 if indent_pt:
                     indent=OxmlElement('w:tblInd');indent.set(qn('w:w'),str(round(indent_pt*20)));indent.set(qn('w:type'),'dxa');props.append(indent)
                 borders=OxmlElement('w:tblBorders')
@@ -106,7 +110,7 @@ def install_styles(full, params, artwork):
                         run=meta.add_run(author+' / ');run.font.size=Pt(row_size)
                         run.font.name=book.F_AUTHOR
                         run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),book.F_AUTHOR)
-                    run=meta.add_run(number);run.font.name='Times New Roman';run.font.size=Pt(8.77*scale)
+                    run=meta.add_run(number);run.font.name='Times New Roman';run.font.size=Pt(row_size*.877)
         full.build_toc=build_toc
         original_body=full.build_body
         def body_with_margins(doc, chapters, first_sec, *args, **kwargs):
@@ -121,3 +125,7 @@ def install_styles(full, params, artwork):
     if params.get('tocStyle', '').startswith('版式三'):
         from word_toc_illustrated import install_illustrated_toc
         install_illustrated_toc(full, params)
+
+    if params.get("tocStyle", "").startswith("版式四"):
+        from word_toc_vertical import install_vertical_toc
+        install_vertical_toc(full, params)

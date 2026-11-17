@@ -64,7 +64,7 @@ def find_caption(paras, index):
             return None, index
         if candidate._p.find(".//"+qn("a:blip")) is not None:
             return None, index
-        if heading_level(paragraph_style_name(candidate)):
+        if paragraph_heading_level(candidate):
             return None, index
         text = caption_text(candidate)
         if text:
@@ -92,6 +92,26 @@ def heading_level(style_name):
     """按样式名返回标题层级 1~6，非标题（正文）返回 0。"""
     m = re.search(r"(?:heading|标题)\s*([1-6])", style_name, re.I)
     return int(m.group(1)) if m else 0
+
+
+def paragraph_heading_level(para):
+    """Recognize whole-paragraph heading character styles, ignoring whitespace runs."""
+    level = heading_level(paragraph_style_name(para))
+    if level:
+        return level
+    levels = []
+    for run in paragraph_runs(para):
+        if not run.text.strip():
+            continue
+        style, seen, run_level = run.style, set(), 0
+        while style is not None and style.style_id not in seen:
+            seen.add(style.style_id)
+            run_level = heading_level(style.name or '')
+            if run_level:
+                break
+            style = style.base_style
+        levels.append(run_level)
+    return levels[0] if levels and levels[0] and all(value == levels[0] for value in levels) else 0
 
 
 def clean_title(s):
@@ -238,7 +258,7 @@ def convert(src, out=None, bracket_subtitle=None):
             continue
 
         # 有标题样式的：直接映射
-        level = heading_level(style)
+        level = paragraph_heading_level(p)
         if level:
             t = clean_title(text)
             if bracket_subtitle:            # 开关打开：标题若整段被【】包起来，去掉【】（如「标题5」样式的小节）

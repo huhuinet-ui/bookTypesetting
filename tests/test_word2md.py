@@ -146,6 +146,39 @@ class Word2MarkdownBoldTests(unittest.TestCase):
         text, _ = self.convert_document(doc)
         self.assertEqual(text, "前文**链接文字**后文\n")
 
+    def test_heading_character_style_recognized_after_body_without_blank(self):
+        doc = Document()
+        style = doc.styles.add_style('Heading 4 Char_imported', WD_STYLE_TYPE.CHARACTER)
+        style.font.bold = True
+        doc.add_paragraph('上一篇的最后一段正文。')
+        para = doc.add_paragraph('\u00a0\u00a0')
+        para.add_run('寒冷除夕夜，最暖母女情').style = style
+        doc.add_paragraph()
+        doc.add_paragraph('新文章的正文。')
+        text, _ = self.convert_document(doc)
+        self.assertIn('#### 寒冷除夕夜，最暖母女情', text)
+        self.assertNotIn('**寒冷除夕夜，最暖母女情**', text)
+
+    def test_mixed_heading_character_style_is_still_body(self):
+        doc = Document()
+        style = doc.styles.add_style('Heading 4 Char_imported', WD_STYLE_TYPE.CHARACTER)
+        style.font.bold = True
+        para = doc.add_paragraph('普通正文里')
+        para.add_run('局部强调').style = style
+        para.add_run('继续说明。')
+        text, _ = self.convert_document(doc)
+        self.assertEqual(text, '普通正文里**局部强调**继续说明。\n')
+
+    def test_inherited_heading_character_style_is_recognized(self):
+        doc = Document()
+        parent = doc.styles.add_style('Heading 4 Char_imported', WD_STYLE_TYPE.CHARACTER)
+        child = doc.styles.add_style('ImportedArticleTitle', WD_STYLE_TYPE.CHARACTER)
+        child.base_style = parent
+        doc.add_paragraph('前文。')
+        doc.add_paragraph().add_run('继承字符样式的文章标题').style = child
+        text, _ = self.convert_document(doc)
+        self.assertIn('#### 继承字符样式的文章标题', text)
+
     def test_missing_default_paragraph_style_keeps_body_and_bold(self):
         doc = Document()
         para = doc.add_paragraph('普通正文，')

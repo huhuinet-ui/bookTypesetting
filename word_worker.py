@@ -39,6 +39,8 @@ def main():
     full.book.MARK_COLOR_ON = True
     full.book.MARK_COLOR = RGBColor.from_string(str(p.get("markTargetColor", p.get("bookColor", "#DEB887"))).lstrip("#"))
     full.book.BOOK_COLOR = RGBColor.from_string(p["bookColor"].lstrip("#"))
+    full.book.TITLE_PAGE_COLOR = (None if p.get("titlePageColorFollowTheme", True) else
+                                  RGBColor.from_string(str(p.get("titlePageColor", p["bookColor"])).lstrip("#")))
     full.book.RULE_COLOR = p["ruleColor"].lstrip("#")
     full.book.SUBTITLE_COLOR = RGBColor.from_string(str(p.get("subtitleColor", "#000000")).lstrip("#"))
     full.book.SUBTITLE_BG_ON = bool(p.get("subtitleBgOn", False))
@@ -67,6 +69,10 @@ def main():
             for kind, val in article["items"]:
                 if kind == "img":
                     validate_image_path(val[0], root)
+    for front_text in (data.get("preface"), data.get("afterword")):
+        for kind, val in full.book.classify((front_text or '').split('\n'), base_dir=str(Path(config["source"]).parent)):
+            if kind == "img":
+                validate_image_path(val[0], root)
     from word_styles import install_styles
     style_params = dict(p)
     if not any(ch["title"] is not None for ch in data["chapters"]):

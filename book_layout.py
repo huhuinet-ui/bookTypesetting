@@ -157,6 +157,7 @@ KEEP_TOGETHER = False
 # 能彻底消除「一页只剩 1~2 行」，但段落偏长时页面底部会留白。想更彻底就改成 True。
 
 # ---- 小标题（文章内的小节标题，如「目标感治好了我的矫情」）----
+TITLE_PAGE_COLOR = None      # None 跟随书籍主色调，也可设为 RGBColor
 SUBTITLE_BOLD = True
 SUBTITLE_COLOR = RGBColor(0, 0, 0)
 SUBTITLE_BG_ON = False
@@ -1251,6 +1252,7 @@ def add_chapter_page(doc, title, intro=None, anchor=None):
 
 def add_title_page(doc, title, author="", size=24, text=""):
     """独立扉页：书名与可选作者居中；页眉由调用方置空。"""
+    color = TITLE_PAGE_COLOR if TITLE_PAGE_COLOR is not None else BOOK_COLOR
     p = doc.add_paragraph()
     # Place the title in the upper middle of the finished page.
     offset = max(0, PAGE_H * 0.32 - M_TOP)
@@ -1258,19 +1260,19 @@ def add_title_page(doc, title, author="", size=24, text=""):
     p.paragraph_format.space_before = Mm(offset)
     p.paragraph_format.space_after = Pt(24)
     p.paragraph_format.line_spacing = 1.5
-    R(p, title, cn=F_TITLE, size=size)
+    R(p, title, cn=F_TITLE, size=size, color=color)
     if author:
         p = doc.add_paragraph()
         p.alignment = CENTER
         p.paragraph_format.space_after = Pt(0)
-        R(p, author, cn=F_AUTHOR, size=AUTHOR_SIZE)
+        R(p, author, cn=F_AUTHOR, size=AUTHOR_SIZE, color=color)
 
     if text:
         for line in text.split("\n"):
             if not line.strip(): continue
             p = doc.add_paragraph()
             set_para(p, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
-            R(p, line, cn=F_BODY, size=BODY_SIZE)
+            R(p, line, cn=F_BODY, size=BODY_SIZE, color=color)
 
 
 def add_front_page(doc, title, text):
@@ -1282,12 +1284,26 @@ def add_front_page(doc, title, text):
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 18, 1.0)
     R(p, title, cn=F_TITLE, size=FRONT_SIZE, bold=True)
-    for para in re.split(r"\n[ \t]*\n+", (text or "").strip()):
-        if not para.strip():
+    base_dir = os.path.dirname(os.path.abspath(SRC))
+    max_width = (IMAGE_MAX_W or (PAGE_W-M_LEFT-M_RIGHT)/10.0)*IMG_MAX_W_RATIO
+    for kind, value in classify((text or '').split('\n'), base_dir=base_dir):
+        if kind == 'img':
+            add_image(doc, value[0], value[1], max_width)
             continue
         bp = doc.add_paragraph()
-        set_para(bp, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
-        add_body_para(bp, para, cn=F_BODY, size=BODY_SIZE)
+        if kind == 'li':
+            add_bullet_para(bp, value)
+        elif kind == 'h':
+            set_para(bp, LEFT, 0, BODY_AFTER, BODY_LINE)
+            bp.paragraph_format.keep_with_next = True
+            add_subtitle(bp, value)
+        elif kind == 'num':
+            set_para(bp, LEFT, 0, BODY_AFTER, BODY_LINE)
+            R(bp, value, cn=F_BODY, size=BODY_SIZE)
+        else:
+            set_para(bp, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
+            add_body_para(bp, value, cn=F_BODY_ALT if kind=='palt' else F_BODY, size=BODY_SIZE)
+
 
 
 def main():

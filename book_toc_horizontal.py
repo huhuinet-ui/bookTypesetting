@@ -31,7 +31,7 @@ M_TOP, M_BOT = 32, 40            # 上、下边距（毫米）
 M_LEFT, M_RIGHT = 28, 33         # 左、右边距（毫米）
 F_TOC = "方正清刻本悦宋简体"     # 目录用到的中文字体
 TITLE_SIZE = 20                  # 「目录」两个字的大小（磅）
-ENTRY_SIZE = 12                  # 每个条目文字的大小（磅）
+ENTRY_SIZE = 9.5                  # 每个条目文字的大小（磅）
 TOP_LINES = 0                    # 「目录」从页面顶部往下空几行（1 行 = ENTRY_SIZE 磅）
 TITLE_AFTER = 18                 # 「目录」和第一条之间空多少（磅）
 ENTRY_LEADER = WD_TAB_LEADER.SPACES  # 标题和页码之间的填充线：DOTS=点线 / SPACES=空白 / HYPHENS=短横线

@@ -169,6 +169,8 @@ const GROUPS = [
    {k:"titlePageText",l:"扉页正文（留空自动读取，支持分段）",t:"textarea",d:""},
    {k:"titlePageAuthor",l:"扉页作者（可留空）",t:"text",d:""},
    {k:"titlePageSize",l:"扉页书名字号",t:"num",d:24,u:"pt",s:1,min:10,max:72},
+   {k:"titlePageColorFollowTheme",l:"扉页文字颜色跟随主题色",t:"bool",d:true},
+   {k:"titlePageColor",l:"扉页自定义文字颜色（关闭跟随后生效）",t:"color",d:"#DEB887"},
  ]},
  { title:"纸张与页边距", items:[
    {k:"pageW",l:"成品宽",t:"num",d:140,u:"mm",s:1,min:50,max:600},
@@ -286,14 +288,15 @@ const GROUPS = [
    {k:"pad",l:"页码补零位数",t:"num",d:2,u:"位",s:1,min:1,max:4},
  ]},
  { title:"目录", items:[
-   {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码","版式三：年轮枝叶+右侧层级目录"]},
+   {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码","版式三：年轮枝叶+右侧层级目录","版式四：竖排章节+标题页码"]},
    {k:"tocShowSequence",l:"版式2·显示文章序号",t:"bool",d:false},
+   {k:"toc2PageShiftLeft",l:"版式2·作者页码列左移",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
    {k:"toc3ShiftLeft",l:"版式3·目录内容左移",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
    {k:"toc3ExtraWidth",l:"版式3·目录栏加宽",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:20,u:"pt",s:0.5,min:6,max:40},
-   {k:"tocEntrySize",l:"条目字号",t:"num",d:10.5,u:"pt",s:0.5,min:6,max:30},
-   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:30},
+   {k:"tocEntrySize",l:"条目字号",t:"num",d:9.5,u:"pt",s:0.5,min:6,max:30},
+   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:10.5,u:"pt",s:0.5,min:6,max:30},
    {k:"chapterTocBold",l:"章节条目加粗",t:"bool",d:true},
    {k:"articleIndentPt",l:"文章条目缩进",t:"num",d:24,u:"pt",s:1,min:0,max:100},
    {k:"entrySpacing",l:"条目行距倍数",t:"num",d:1.2,u:"",s:0.1,min:1,max:3},
@@ -465,6 +468,7 @@ function mmpt(v){ return v*72/25.4; }
 function fontStack(cjk){ return `"Times New Roman","${cjk}",serif`; }
 function hexColor(c){ if(!c) return "#000000"; return /^#/.test(c)?c:"#"+c; }
 function isIllustratedToc(){return String(P.tocStyle||"").startsWith("版式三");}
+function isVerticalToc(){return String(P.tocStyle||"").startsWith("版式四");}
 function isReferenceToc(){ return String(P.tocStyle||"").startsWith("版式二"); }
 function isChap5(){ return String(P.chapterStyle||"").includes("纸飞机"); }
 function isChap4(){ return String(P.chapterStyle||"").includes("玫瑰"); }
@@ -700,6 +704,9 @@ async function loadImage(file){
 }
 function collectImgPaths(data){
   const out = new Set();
+  for(const text of [data.preface,data.afterword]){
+    for(const item of classify((text||'').split('\n'),false))if(item[0]==='img')out.add(item[1].path);
+  }
   for(const ch of data.chapters) for(const a of ch.articles) for(const it of a.items) if(it[0]==="img") out.add(it[1].path);
   return out;
 }
@@ -737,6 +744,24 @@ function buildCSS(){
 @page toc-reference { margin:${(P.pageH+2*printInset())*.185}mm ${(P.pageW+2*printInset())*(484.724-389.7)/484.724}mm ${(P.pageH+2*printInset())*.15}mm ${(P.pageW+2*printInset())*107.7/484.724}mm; }
 @page toc-reference:left { margin:${(P.pageH+2*printInset())*.185}mm ${(P.pageW+2*printInset())*(484.724-389.7)/484.724}mm ${(P.pageH+2*printInset())*.15}mm ${(P.pageW+2*printInset())*107.7/484.724}mm; }
 @page toc-reference:right { margin:${(P.pageH+2*printInset())*.185}mm ${(P.pageW+2*printInset())*(484.724-389.7)/484.724}mm ${(P.pageH+2*printInset())*.15}mm ${(P.pageW+2*printInset())*107.7/484.724}mm; }
+@page toc-vertical { size:${W}mm ${H}mm; margin:${printInset()+40}mm ${printInset()+16}mm ${printInset()+20}mm; }
+@page toc-vertical:left { margin:${printInset()+40}mm ${printInset()+16}mm ${printInset()+20}mm; }
+@page toc-vertical:right { margin:${printInset()+40}mm ${printInset()+16}mm ${printInset()+20}mm; }
+.toc-vertical-wrap { page:toc-vertical; }
+ .toc-vertical-chapter { break-inside:avoid; }
+.toc-vertical-chapter-newpage { break-before:page; }
+.toc-vertical-chapter-shift { margin-left:6mm; }
+.toc-vertical-block { display:table; width:100%; table-layout:fixed; margin-bottom:18pt; break-inside:avoid; }
+.toc-vertical-label, .toc-vertical-seq { break-inside:avoid; }
+.toc-vertical-label, .toc-vertical-seq, .toc-vertical-gap, .toc-vertical-entries { display:table-cell; vertical-align:top; padding:0; }
+.toc-vertical-label, .toc-vertical-seq { width:7mm; text-align:center; font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterTocSize}pt; line-height:${P.chapterTocSize*1.4}pt; white-space:pre-line; }
+.toc-vertical-label { padding-top:5mm; }
+.toc-vertical-entries { padding-top:10mm; }
+.toc-vertical-seq { color:#777080; }
+.toc-vertical-gap { width:10mm; }
+.toc-vertical-entry { font-family:${fontStack(P.fBody)}; font-size:${P.tocEntrySize}pt; line-height:${P.tocEntrySize*1.8}pt; margin:0 0 ${P.tocEntrySize*.8}pt; overflow-wrap:anywhere; break-inside:avoid; }
+.toc-vertical-entry .toc-num { font-family:"Times New Roman",serif; white-space:nowrap; }
+.toc-vertical-volume { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.chapterTocSize+2}pt; margin-bottom:18pt; break-after:avoid; }
 .toc-reference-wrap { page:toc-reference; }
 @page toc-illustrated { size:${W}mm ${H}mm; margin:${toc3.top}mm ${toc3.right}mm ${toc3.bottom}mm ${toc3.left}mm; }
 @page toc-illustrated:left { size:${W}mm ${H}mm; margin:${toc3.top}mm ${toc3.right}mm ${toc3.bottom}mm ${toc3.left}mm; }
@@ -754,7 +779,8 @@ function buildCSS(){
 .toc-illustrated-article { font-size:${P.tocEntrySize}pt; }
 .toc-illustrated-heading { position:absolute; top:${toc3.titleTop}mm; right:${printInset()+Math.max(10,Number(P.mRight))}mm; writing-mode:vertical-rl; text-orientation:upright; font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; letter-spacing:6pt; line-height:1.3; color:#59604f; }
 .toc-illustrated-art { position:absolute; left:${toc3.artLeft}mm; top:${toc3.artTop}mm; width:${toc3.artWidth}mm; height:${toc3.artHeight}mm; pointer-events:none; }
-.title-page { padding-top:${Math.max(0,P.pageH*.32-P.mTop)}mm; text-align:center; font-family:${fontStack(P.fTitle)}; }
+.title-page .mark { color:inherit; }
+.title-page { color:${hexColor(P.titlePageColorFollowTheme!==false ? P.bookColor : (P.titlePageColor||P.bookColor))}; padding-top:${Math.max(0,P.pageH*.32-P.mTop)}mm; text-align:center; font-family:${fontStack(P.fTitle)}; }
 .title-page-name { font-size:${P.titlePageSize}pt; line-height:1.5; margin:0 0 24pt; overflow-wrap:anywhere; }
 .title-page-text { font-family:${fontStack(P.fBody)}; font-size:${P.bodySize}pt; text-align:justify; margin-top:24pt; }
 .title-page-author { font-family:${fontStack(P.fAuthor)}; font-size:${P.authorSize}pt; line-height:1.5; }
@@ -805,10 +831,10 @@ function buildCSS(){
 .toc-entry .toc-text { white-space:pre-wrap; }
 .toc-entry .toc-num { white-space:nowrap; }
 .toc-reference { --ref-scale:${(P.pageW+2*printInset())/(484.724*25.4/72)}; width:100%; padding:0; }
-.toc-reference .toc-title { text-align:right; margin:0 0 calc(42pt * var(--ref-scale)); font-size:calc(10.57pt * var(--ref-scale)); font-weight:normal; line-height:calc(13pt * var(--ref-scale)); break-inside:avoid; break-after:avoid; }
-.toc-reference .toc-english { display:block; font-family:"Times New Roman",serif; font-size:calc(9.13pt * var(--ref-scale)); letter-spacing:0; }
-.toc-reference .toc-section-title { font-family:${fontStack(P.fTitle)}; font-size:calc(13.45pt * var(--ref-scale)); font-weight:${P.chapterTocBold?"bold":"normal"}; line-height:calc(19pt * var(--ref-scale)); margin:calc(20pt * var(--ref-scale)) 0 calc(17pt * var(--ref-scale)); break-after:avoid; break-inside:avoid; }
-.toc-reference .toc-reference-row { display:flex; align-items:baseline; gap:0; font-size:calc(10pt * var(--ref-scale)); line-height:calc(20pt * var(--ref-scale)); margin:0; break-inside:avoid; }
+.toc-reference .toc-title { text-align:right; margin:0 0 calc(42pt * var(--ref-scale)); font-size:${P.tocTitleSize}pt; font-weight:normal; line-height:max(calc(13pt * var(--ref-scale)),${P.tocTitleSize*1.2}pt); break-inside:avoid; break-after:avoid; }
+.toc-reference .toc-english { display:block; font-family:"Times New Roman",serif; font-size:calc(9.13pt * var(--ref-scale)); line-height:max(calc(13pt * var(--ref-scale)),calc(10.956pt * var(--ref-scale))); letter-spacing:0; }
+.toc-reference .toc-section-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterTocSize}pt; font-weight:${P.chapterTocBold?"bold":"normal"}; line-height:max(calc(19pt * var(--ref-scale)),${P.chapterTocSize*1.3}pt); margin:calc(20pt * var(--ref-scale)) 0 calc(17pt * var(--ref-scale)); break-after:avoid; break-inside:avoid; }
+.toc-reference .toc-reference-row { display:flex; align-items:baseline; gap:0; padding-right:${Math.max(0,Math.min(20,Number(P.toc2PageShiftLeft ?? 5)))}mm; font-size:${P.tocEntrySize}pt; line-height:max(calc(20pt * var(--ref-scale)),${P.tocEntrySize*1.3}pt); margin:0; break-inside:avoid; }
 .toc-reference .toc-sequence { flex:0 0 calc(23pt * var(--ref-scale)); font-family:"Times New Roman",serif; font-size:calc(9pt * var(--ref-scale)); font-style:italic; font-weight:bold; color:#555; }
 .toc-reference .toc-article-name { padding-right:8pt; flex:1; min-width:0; overflow-wrap:anywhere; }
 .toc-reference .toc-meta { flex:0 0 34%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:1em; }
@@ -958,7 +984,7 @@ function renderArticle(a, key){
   return parts.join("\n");
 }
 function renderFront(title, text, cls){
-  const paras = (text||"").trim().split(/\n[ \t]*\n+/).filter(s=>s.trim()).map(p=>renderPara(p)).join("\n");
+  const paras = renderItems(classify((text||"").split("\n"),false));
   return `<div class="front-page ${cls}"><div style="height:${P.frontTopLines*P.bodyLine}pt"></div><div class="front-title">${esc(title)}</div>${paras}</div>`;
 }
 function renderTocEntry(text, key, size, bold, indentPt){
@@ -973,6 +999,29 @@ function renderTocEntry(text, key, size, bold, indentPt){
 }
 function renderTocVolume(volume){
   return `<div class="toc-volume-title"><span class="toc-volume-number">${esc(volume.number)}</span>${volume.title?`<span>${esc(volume.title)}</span>`:""}</div>`;
+}
+function renderVerticalToc(data){
+  let html='<div class="toc toc-vertical">',lastVolume=null;
+  const digits=Math.max(3,Number(P.pad)||0);
+  data.chapters.forEach((ch,ci)=>{
+    html+=`<section class="toc-vertical-chapter${ci>0 && ci%2===0?' toc-vertical-chapter-newpage':''}${ci%2===1?' toc-vertical-chapter-shift':''}">`;
+    if(ch.volume && ch.volume!==lastVolume)html+=`<div class="toc-vertical-volume">${esc(ch.volume.label)} / <span class="toc-num" data-toc-ref="v${ch.volume.id}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span></div>`;
+    lastVolume=ch.volume;
+    const match=(ch.title||'').match(/^(第[一二三四五六七八九十百零〇两\d]+章|[一二三四五六七八九十百零〇两\d]+[、.．])\s*(.*)$/);
+    const seq=match?match[1]:'',name=match?match[2]:(ch.title||'');
+    const capacity=Math.max(6,Math.floor((P.pageH-85)/(P.tocEntrySize*2.6*25.4/72)));
+    const chars=Math.max(8,Math.floor((P.pageW-56-(ci%2===1?6:0))/(P.tocEntrySize*25.4/72)));
+    const chunks=[];let chunk=[],used=0;
+    ch.articles.forEach((a,ai)=>{const cost=Math.max(1,Math.ceil((Array.from(a.title).length+7)/chars));if(chunk.length && used+cost>capacity){chunks.push(chunk);chunk=[];used=0;}chunk.push([a,ai]);used+=cost;});
+    if(chunk.length || !chunks.length)chunks.push(chunk);
+    for(const articles of chunks){
+      html+=`<div class="toc-vertical-block"><div class="toc-vertical-label">${esc(Array.from(name).join('\n'))}</div><div class="toc-vertical-seq">${seq?'─\n'+esc(Array.from(seq).join('\n'))+'\n─':''}</div><div class="toc-vertical-gap"></div><div class="toc-vertical-entries">`;
+      for(const [a,ai] of articles)html+=`<div class="toc-vertical-entry">${esc(a.title)}<span class="toc-num"> / <span class="toc-num" data-toc-ref="a${ci}_${ai}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span></span></div>`;
+      html+='</div></div>';
+    }
+    html+='</section>';
+  });
+  return html+'</div>';
 }
 function renderReferenceToc(data){
   let html=`<div class="toc toc-reference"><div class="toc-title">${esc(P.tocTitle)}<span class="toc-english">Content</span></div>`;
@@ -1037,7 +1086,9 @@ function renderBook(){
     firstEl = false;
   }
   let tocHtml;
-  if(isIllustratedToc()){
+  if(isVerticalToc()){
+    tocHtml=`<div class="toc-wrap toc-vertical-wrap${firstEl?"":" break-page"}">${renderVerticalToc(d)}</div>`;
+  } else if(isIllustratedToc()){
     tocHtml=`<div class="toc-wrap toc-illustrated-wrap${firstEl?"":" break-page"}">${renderIllustratedToc(d)}</div>`;
   } else if(isReferenceToc()){
     tocHtml=`<div class="toc-wrap toc-reference-wrap${firstEl?"":" break-page"}">${renderReferenceToc(d)}</div>`;
