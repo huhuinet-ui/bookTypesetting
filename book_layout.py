@@ -193,6 +193,8 @@ CAPTION_SIZE = 8
 # 图注字号（磅）：9 磅，居中加粗，放在图片正下方。
 IMAGE_MAX_W = None
 # 插图最大宽度（厘米）。None=自动用版心宽（=纸张宽-左右边距），超过会自动缩到该宽度。
+IMG_ONLY_PAGE_LIFT_LINES = 2 # 连续图片页顶部增加的正文行数；0关闭
+IMG_SIDE_EXTEND = 0          # 左右各允许超出版心的毫米数
 IMG_AFTER = 6                 # 图片组独立段后距（磅）
 IMG_ALLOW_UPSCALE = False     # 是否允许小图放大
 IMG_MAX_W_RATIO = 0.9
@@ -624,6 +626,11 @@ def _img_line(p, left_pt, y0, y1, x_end, color_hex):
     run._r.append(parse_xml(vml))
 
 
+def image_max_width_cm():
+    extension=max(0,min(IMG_SIDE_EXTEND,M_LEFT-2,M_RIGHT-2))
+    return min((PAGE_W-4)/10,(IMAGE_MAX_W or (PAGE_W-M_LEFT-M_RIGHT)/10)*IMG_MAX_W_RATIO+extension*2/10)
+
+
 def image_layout_size(path, max_width_cm):
     """返回图片按 max_width_cm 缩放后的 (宽度cm, 宽度pt, 高度pt)。"""
     native_cm = None
@@ -716,12 +723,14 @@ def word_image_source(path):
 def add_image(doc, path, caption=None, max_width_cm=None, page_break=False):
     """插图：图片居中；图片底下可衬色块（IMG_BLOCK_*）；图注可加折线引线（IMG_LINE_*）。"""
     if max_width_cm is None:
-        base = IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0
-        max_width_cm = base * IMG_MAX_W_RATIO
+        max_width_cm = image_max_width_cm()
     text_w_pt = (PAGE_W - M_LEFT - M_RIGHT) * 72 / 25.4
     w_cm, w_pt, h_pt = image_layout_size(path, max_width_cm)
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 0, 1.0)
+    extension=max(0,min(IMG_SIDE_EXTEND,M_LEFT-2,M_RIGHT-2))
+    p.paragraph_format.left_indent = Mm(-extension)
+    p.paragraph_format.right_indent = Mm(-extension)
     p.paragraph_format.keep_together = False
     p.paragraph_format.keep_with_next = False
     if page_break:
@@ -817,6 +826,23 @@ def normalize_body_bold(lines):
     return result
 
 
+def bind_signature_to_previous(paragraph):
+    """Keep the signature block with the preceding paragraph's final lines."""
+    previous = paragraph._p.getprevious()
+    if previous is None or previous.tag != qn("w:p"):
+        return
+    if not any(node.text for node in previous.iter(qn("w:t"))):
+        return
+    from docx.text.paragraph import Paragraph
+    prior = Paragraph(previous, paragraph._parent)
+    prior.paragraph_format.keep_with_next = True
+    prior.paragraph_format.widow_control = True
+    paragraph.paragraph_format.keep_together = True
+
+
+SIGNATURE_DATE_RE = re.compile(r"^\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?\s*$")
+
+
 def classify(lines, base_dir=None, poem=False):
     """把一篇文章的正文行分类成 items 列表：
     ('p', text) 正文段（可含 {{特殊字体}} 行内标记）  ('palt', text) 整段特殊字体（{{ }} 块内）  ('h', text) 小标题  ('num', text) 序号  ('img', (path, caption)) 插图
@@ -841,6 +867,12 @@ def classify(lines, base_dir=None, poem=False):
         if not s:
             k += 1
             continue
+        if not in_alt and SIGNATURE_DATE_RE.fullmatch(s):
+            items.append(("signature", s)); k += 1; continue
+        if (not in_alt and k+1 < m and SIGNATURE_DATE_RE.fullmatch(ls[k+1])
+                and 1 <= len(s) <= 20 and not re.search(r"[。！？；：，、#]", s)
+                and (k == 0 or not ls[k-1])):
+            items.append(("signature", s + "\n" + ls[k+1])); k += 2; continue
         if s == ALT_OPEN:      # 单独一行 {{ → 开启特殊字体块
             in_alt = True; k += 1; continue
         if s == ALT_CLOSE:     # 单独一行 }} → 结束特殊字体块
@@ -977,6 +1009,8 @@ def parse_book(src=None):
                 preface_title = kind[len(heading_kind):].lstrip(" \t　:：、—–-") or ("前言" if heading_kind == "前沿" else heading_kind)
             elif heading_kind in AFTERWORD_KEYS:
                 target, afterword_title = afterword, kind
+            elif not chapters and preface_title is None and title_page_title is not None:
+                target, preface_title = preface, kind
             else:
                 target = None
             i += 1
@@ -1010,7 +1044,7 @@ def parse_book(src=None):
             i = j
             continue
         # 文章（####）
-        if s.startswith("####"):
+        if re.match(r"^####(?:\s|$)", s):
             title = re.sub(r"^标题\s*[:：]\s*", "", s.lstrip("#").strip()).strip()
             author, j = "", i + 1
             while j < n and j <= i + 5:
@@ -1112,7 +1146,52 @@ def clear_header(sec):
     sec.even_page_header.is_linked_to_previous = False
 
 
+def add_book_section(doc, start_type):
+    """Start a section, restoring normal geometry after a picture-page run."""
+    pending = getattr(doc.part, '_picture_normal_top', None)
+    section = doc.add_section(start_type)
+    if pending is not None:
+        section.top_margin = pending
+        del doc.part._picture_normal_top
+    return section
+
+
+def restore_picture_page(doc):
+    if getattr(doc.part, '_picture_normal_top', None) is None:
+        return False
+    from docx.enum.section import WD_SECTION
+    section = add_book_section(doc, WD_SECTION.NEW_PAGE)
+    for node in list(section._sectPr.findall(qn('w:pgNumType'))):
+        section._sectPr.remove(node)
+    return True
+
+
+def picture_page_items(doc, items):
+    """Use real Word section geometry for consecutive images, not visual offsets."""
+    from docx.enum.section import WD_SECTION
+    index = 0
+    while index < len(items):
+        if items[index][0] != 'img':
+            restore_picture_page(doc)
+            yield items[index]
+            index += 1
+            continue
+        end = index
+        while end < len(items) and items[end][0] == 'img': end += 1
+        if end-index >= 2 and IMG_ONLY_PAGE_LIFT_LINES > 0:
+            normal_top = doc.sections[-1].top_margin
+            section = add_book_section(doc, WD_SECTION.NEW_PAGE)
+            doc.part._picture_normal_top = normal_top
+            requested = IMG_ONLY_PAGE_LIFT_LINES * BODY_LINE * 25.4/72
+            section.top_margin = Mm(max(page_inset()+2, normal_top.mm-requested))
+            for node in list(section._sectPr.findall(qn('w:pgNumType'))):
+                section._sectPr.remove(node)
+        for item in items[index:end]: yield item
+        index = end
+
+
 def build_article(doc, art, first, recto=True, anchor=None):
+    if restore_picture_page(doc): first=True
     align = RIGHT if recto else LEFT   # 标题块镜像：奇数页靠右、偶数页靠左（贴外侧）
     for k in range(TITLE_TOP_LINES):
         sp = doc.add_paragraph()
@@ -1145,8 +1224,8 @@ def build_article(doc, art, first, recto=True, anchor=None):
         return
 
     page_h_pt = (PAGE_H - M_TOP - M_BOT) * 72 / 25.4
-    img_max_w = (IMAGE_MAX_W or (PAGE_W - M_LEFT - M_RIGHT) / 10.0) * IMG_MAX_W_RATIO
-    for kind, text in art["items"]:
+    img_max_w = image_max_width_cm()
+    for kind, text in picture_page_items(doc, art["items"]):
         if kind == "img":
             path, caption = text
             # Word knows the actual remaining space; do not insert estimated breaks.
@@ -1159,6 +1238,11 @@ def build_article(doc, art, first, recto=True, anchor=None):
             add_subtitle(p, text)
         elif kind == "li":
             add_bullet_para(p, text)
+        elif kind == "signature":
+            bind_signature_to_previous(p)
+            set_para(p, RIGHT, 0, BODY_AFTER, BODY_LINE)
+            p.paragraph_format.keep_together = True
+            add_body_para(p, text, size=BODY_SIZE)
         elif kind == "p":
             set_para(p, JUSTIFY, 0, BODY_AFTER, BODY_LINE, indent_chars=BODY_INDENT)
             add_body_para(p, text)
@@ -1285,13 +1369,18 @@ def add_front_page(doc, title, text):
     set_para(p, CENTER, 0, 18, 1.0)
     R(p, title, cn=F_TITLE, size=FRONT_SIZE, bold=True)
     base_dir = os.path.dirname(os.path.abspath(SRC))
-    max_width = (IMAGE_MAX_W or (PAGE_W-M_LEFT-M_RIGHT)/10.0)*IMG_MAX_W_RATIO
-    for kind, value in classify((text or '').split('\n'), base_dir=base_dir):
+    max_width = image_max_width_cm()
+    for kind, value in picture_page_items(doc, classify((text or '').split('\n'), base_dir=base_dir)):
         if kind == 'img':
             add_image(doc, value[0], value[1], max_width)
             continue
         bp = doc.add_paragraph()
-        if kind == 'li':
+        if kind == 'signature':
+            bind_signature_to_previous(bp)
+            set_para(bp, RIGHT, 0, BODY_AFTER, BODY_LINE)
+            bp.paragraph_format.keep_together = True
+            add_body_para(bp, value, size=BODY_SIZE)
+        elif kind == 'li':
             add_bullet_para(bp, value)
         elif kind == 'h':
             set_para(bp, LEFT, 0, BODY_AFTER, BODY_LINE)

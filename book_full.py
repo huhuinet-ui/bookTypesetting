@@ -132,7 +132,7 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
         volume = ch.get("volume")
         starts_volume = volume and volume is not last_volume
         if starts_volume:
-            volume_sec = first_sec if ci == 0 else doc.add_section(WD_SECTION.ODD_PAGE)
+            volume_sec = first_sec if ci == 0 else book.add_book_section(doc, WD_SECTION.ODD_PAGE)
             if ci != 0:
                 remove_page_number_start(volume_sec._sectPr)
             book.clear_header(volume_sec)
@@ -143,18 +143,18 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
             if ci == 0 and not starts_volume:
                 page_sec = first_sec
             else:
-                page_sec = doc.add_section(WD_SECTION.NEW_PAGE if starts_volume else WD_SECTION.ODD_PAGE)   # 首章紧接卷页，其余章节右页开始
+                page_sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE if starts_volume else WD_SECTION.ODD_PAGE)   # 首章紧接卷页，其余章节右页开始
                 remove_page_number_start(page_sec._sectPr)
             book.clear_header(page_sec)                      # 暗码：篇章页不显示页码
             book.add_page_background(page_sec, str(book.BOOK_COLOR))   # 篇章页整页底色（用书籍主色调）
             book.add_chapter_page(doc, ch["title"], ch.get("intro"), anchor=_tok(ch["title"]))
-            art_sec = doc.add_section(WD_SECTION.NEW_PAGE)
+            art_sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
             remove_page_number_start(art_sec._sectPr)
             book.setup_header(art_sec, chapter=ch["title"], pad=pad)   # 文章节奇偶页眉
             for i, a in enumerate(ch["articles"]):
                 book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
         else:
-            art_sec = doc.add_section(WD_SECTION.NEW_PAGE) if starts_volume else doc.sections[-1]
+            art_sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE) if starts_volume else doc.sections[-1]
             if starts_volume:
                 remove_page_number_start(art_sec._sectPr)
             book.setup_header(art_sec, pad=pad)
@@ -164,7 +164,7 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
 
 def add_front_matter(doc, title, text):
     """前言/后记页：单独成节、空页眉（暗码，不显示页码）。"""
-    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
     remove_page_number_start(sec._sectPr)
     book.clear_header(sec)
     book.add_front_page(doc, title, text)
@@ -250,7 +250,7 @@ def main():
                             TITLE_PAGE_TITLE or (data.get("title_page_title") if TITLE_PAGE_FROM_SOURCE else None) or BOOK_NAME,
                             TITLE_PAGE_AUTHOR, TITLE_PAGE_SIZE,
                             TITLE_PAGE_TEXT or ((data.get("title_page") or "") if TITLE_PAGE_FROM_SOURCE else ""))
-        sec1 = doc.add_section(WD_SECTION.NEW_PAGE)
+        sec1 = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
         remove_page_number_start(sec1._sectPr)
         book.clear_header(sec1)
 
@@ -258,7 +258,7 @@ def main():
     if data["preface"] is not None:
         book.clear_header(sec1)
         book.add_front_page(doc, data["preface_title"], data["preface"])
-        toc_sec = doc.add_section(WD_SECTION.NEW_PAGE)   # 目录页另起一页
+        toc_sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE)   # 目录页另起一页
         remove_page_number_start(toc_sec._sectPr)
         book.clear_header(toc_sec)
     else:
@@ -266,7 +266,7 @@ def main():
 
     build_toc(doc, chapters, page_map, pad=pad)
 
-    sec2 = doc.add_section(WD_SECTION.ODD_PAGE)   # 正文第一节：从奇数页(右页)开始，保证正文页码奇偶=物理页奇偶，色块/标题镜像才和页眉一致
+    sec2 = book.add_book_section(doc, WD_SECTION.ODD_PAGE)   # 正文第一节：从奇数页(右页)开始，保证正文页码奇偶=物理页奇偶，色块/标题镜像才和页眉一致
     build_body(doc, chapters, sec2, pad=pad, page_map=page_map)
 
     if data["afterword"] is not None:  # 最后一篇文章后插后记页

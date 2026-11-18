@@ -69,7 +69,8 @@ def install_styles(full, params, artwork):
                 table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False
                 sequence_mm=23*scale*25.4/72
                 row_width=width-indent_pt*25.4/72-page_shift
-                meta_width=row_width*.34
+                title_ratio=max(.30,min(.90,float(params.get("tocTitleWidthPercent",66))/100))
+                meta_width=row_width*(1-title_ratio)
                 widths=[sequence_mm,row_width-sequence_mm-meta_width,meta_width] if show_sequence else [row_width-meta_width,meta_width]
                 for column,w in zip(table.columns,widths):column.width=Mm(w)
                 props=table._tbl.tblPr
@@ -101,7 +102,7 @@ def install_styles(full, params, artwork):
                         titlep,meta=paragraphs
                     full.toc.R(titlep,article['title'],row_size)
                     # Leave the same 8 pt breathing room as the preview's flex gap.
-                    titlep.paragraph_format.right_indent=Pt(8)
+                    titlep.paragraph_format.right_indent=Pt(max(0,min(30,float(params.get("tocTitleMetaGap",8)))))
                     meta.alignment=WD_ALIGN_PARAGRAPH.RIGHT
                     page=page_map.get(article['title'])
                     number=str(page).zfill(max(3,int(params.get('pad',3)))) if page else ''

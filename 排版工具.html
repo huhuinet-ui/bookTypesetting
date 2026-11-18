@@ -264,7 +264,9 @@ const GROUPS = [
    {k:"captionSize",l:"图注字号",t:"num",d:8,u:"pt",s:0.5,min:5,max:20},
    {k:"imgMaxWRatio",l:"最大宽度占版心比例",t:"num",d:0.9,u:"",s:0.05,min:0.1,max:1},
    {k:"imgAllowUpscale",l:"小图也按版心比例放大",t:"bool",d:false},
-   {k:"imgPageTopLift",l:"页首图片上移（预览／PDF）",t:"num",d:3,u:"mm",s:0.5,min:0,max:10},
+   {k:"imgOnlyPageLiftLines",l:"连续图片页顶部增加空间",t:"num",d:2,u:"行",s:0.5,min:0,max:4},
+   {k:"imgSideExtend",l:"图片横向扩展（左右各）",t:"num",d:0,u:"mm",s:1,min:0,max:25},
+   {k:"imgPageBottomExtend",l:"页尾图片下移（预览／PDF）",t:"num",d:0,u:"mm",s:0.5,min:0,max:10},
    {k:"imgAfter",l:"整组图片后留白（含图注）",t:"num",d:6,u:"pt",s:1,min:0,max:60},
    {k:"imgBlockOn",l:"图片衬色块",t:"bool",d:true},
    {k:"imgBlockSize",l:"色块尺寸比例",t:"num",d:0.7,u:"",s:0.05,min:0.1,max:1.5},
@@ -290,6 +292,8 @@ const GROUPS = [
  ]},
  { title:"目录", items:[
    {k:"tocStyle",l:"目录版式",t:"select",d:"版式二：分章序号+作者页码",opts:["版式一：简洁目录","版式二：分章序号+作者页码","版式三：年轮枝叶+右侧层级目录","版式四：竖排章节+标题页码"]},
+   {k:"tocTitleWidthPercent",l:"版式2·标题区域占比",t:"num",d:66,u:"%",s:1,min:30,max:90},
+   {k:"tocTitleMetaGap",l:"版式2·标题与作者间隔",t:"num",d:8,u:"pt",s:1,min:0,max:30},
    {k:"tocShowSequence",l:"版式2·显示文章序号",t:"bool",d:false},
    {k:"toc2PageShiftLeft",l:"版式2·作者页码列左移",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
    {k:"toc3ShiftLeft",l:"版式3·目录内容左移",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
@@ -421,7 +425,9 @@ function buildForm(){
     }
     if(g.title==="书籍主色调") html+=`<div class="field wide theme-history"><label>最近使用的主题色</label><div id="themeHistoryColors" class="theme-history-colors" role="group" aria-label="历史主题色"></div><small id="themeHistoryNote"></small></div>`;
     if(g.title==="章节页（篇章页）") html+=`<div class="field wide"><small>版式二标题颜色自动跟随「书籍主色调」，无需单独设置。</small></div>`;
+    if(g.title==="目录") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">版式二：提高标题区域占比、减小标题与作者间隔，可减少长标题换行。例如将占比从 66% 调至 75% 或 80%。作者与页码使用剩余宽度；显示序号时，序号也从标题区域占用空间。</small></div>`;
     if(g.title==="字体") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">用 {{文字}} 标记特殊字体；单独一行 {{ 开始、}} 结束可标记多段正文。字号跟随正文，可与 **加粗／上色** 叠加。</small></div>`;
+    if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">连续两张及以上插图会进入独立图片页，顶部扩展空间参与分页，可容纳更多图片；图片与图注整体不拆页。设为 0 关闭此规则。此分页方式同步应用于预览、PDF 和 Word。</small></div>`;
     if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">整组图片后留白：图注末尾到下一段文字或下一张图片的距离；不控制图片与图注之间的距离。1 pt ≈ 0.35 mm，6 pt 约为 2.1 mm。</small></div>`;
     if(g.title==="前言 / 后记") html+=`<div class="field wide"><label>前言、后记正文字号</label><output id="frontBodySizeInfo">${P.bodySize} pt（与文章正文一致，默认 9 pt）</output><small>在「正文」分组调整共用正文字号。</small></div>`;
     if(g.title==="书脊宽度") html+=`<div class="field wide"><output id="spineResult" aria-live="polite">导入书稿并完成排版后自动计算。</output><small style="line-height:1.8;color:#718278">估算公式：补齐后内文页数 ÷ 2 × 单张纸厚度 ＋ 装订附加厚度。纸厚默认 0.1 mm 仅作示例，请按实际纸张或印厂数据填写；不包含封面纸、精装书壳。结果依据网页总页数，Word 分页不同需按其实际页数复核。</small></div>`;
@@ -544,6 +550,11 @@ function classify(lines, poem){
   while(k < m){
     const s = ls[k];
     if(!s){ k++; continue; }
+    const isDate=value=>/^\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?\s*$/.test(value);
+    if(!altBlock && isDate(s)){items.push(["signature",s]);k++;continue;}
+    if(!altBlock && k+1<m && isDate(ls[k+1]) && s.length<=20 && !/[。！？；：，、#]/.test(s) && (k===0||!ls[k-1])){
+      items.push(["signature",s+"\n"+ls[k+1]]);k+=2;continue;
+    }
     if(s==="{{"){altBlock=true;k++;continue;}
     if(s==="}}"){altBlock=false;k++;continue;}
     let sm = SUB_RE.exec(s);
@@ -603,6 +614,7 @@ function parseBook(srcText){
       }
       else if(PREFACE_KEYS.includes(headingKind)){ target=preface; prefaceTitle=kind.slice(headingKind.length).replace(/^[\s　:：、—–-]+/,"") || (headingKind==="前沿"?"前言":headingKind); }
       else if(AFTERWORD_KEYS.includes(headingKind)){ target=afterword; afterwordTitle=kind; }
+      else if(!chapters.length && prefaceTitle===null && titlePageTitle!==null){target=preface;prefaceTitle=kind;}
       i++;
       if(target===null) continue;
       while(i<n && !/^#{1,4}(?:\s|$)/.test(raw[i].trim())){ if(raw[i].trim() || target!==titlePageText) target.push(raw[i].trim()); i++; }
@@ -632,7 +644,7 @@ function parseBook(srcText){
       const intro=introLines.join("\n").trim() || null;
       chapters.push({title, intro, volume, articles:[]}); i=j; continue;
     }
-    if(s.startsWith("####")){
+    if(/^####(?:\s|$)/.test(s)){
       const title = s.replace(/^#+\s*/,"").replace(/^标题\s*[:：]\s*/,"").trim();
       let author=""; let j=i+1;
       while(j<n && j<=i+5){
@@ -735,6 +747,7 @@ function buildCSS(){
   const toc3=illustratedTocGeometry();
   const W = P.pageW + 2*bleed, H = P.pageH + 2*bleed;
   const t = P.mTop+bleed, b = P.mBot+bleed, inner = P.mLeft+bleed, outer = P.mRight+bleed;
+  const pictureTop=Math.max(bleed+2,t-ptmm(Math.max(0,Number(P.imgOnlyPageLiftLines)||0)*P.bodyLine));
   const markColor = P.markMode==="保留加粗" ? "inherit" : hexColor(P.markTargetColor);
   const widow = P.widowControl ? "widows:2;orphans:2;" : "widows:1;orphans:1;";
   const keep = P.keepTogether ? "break-inside:avoid;" : "";
@@ -742,6 +755,10 @@ function buildCSS(){
 @page { size: ${W}mm ${H}mm; margin: 0; }
 @page :left { margin: ${t}mm ${inner}mm ${b}mm ${outer}mm; }
 @page :right { margin: ${t}mm ${outer}mm ${b}mm ${inner}mm; }
+@page picture-flow { size:${W}mm ${H}mm; margin:${pictureTop}mm ${outer}mm ${b}mm ${inner}mm; }
+@page picture-flow:left { margin:${pictureTop}mm ${inner}mm ${b}mm ${outer}mm; }
+@page picture-flow:right { margin:${pictureTop}mm ${outer}mm ${b}mm ${inner}mm; }
+.picture-pagination { page:picture-flow; }
 @page toc-reference { margin:${(P.pageH+2*printInset())*.185}mm ${(P.pageW+2*printInset())*(484.724-389.7)/484.724}mm ${(P.pageH+2*printInset())*.15}mm ${(P.pageW+2*printInset())*107.7/484.724}mm; }
 @page toc-reference:left { margin:${(P.pageH+2*printInset())*.185}mm ${(P.pageW+2*printInset())*(484.724-389.7)/484.724}mm ${(P.pageH+2*printInset())*.15}mm ${(P.pageW+2*printInset())*107.7/484.724}mm; }
 @page toc-reference:right { margin:${(P.pageH+2*printInset())*.185}mm ${(P.pageW+2*printInset())*(484.724-389.7)/484.724}mm ${(P.pageH+2*printInset())*.15}mm ${(P.pageW+2*printInset())*107.7/484.724}mm; }
@@ -796,6 +813,8 @@ function buildCSS(){
 .body-list li { margin:0 0 ${P.bodyAfter}pt; line-height:${P.bodyLine}pt; text-indent:0; overflow-wrap:anywhere; }
 .subtitle-text { color:${P.subtitleColor}; background-color:${P.subtitleBgOn?P.subtitleBgColor:"transparent"}; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
 .subtitle { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; font-weight:${P.subtitleBold?"bold":"normal"}; break-after:avoid; }
+.signature-leading { break-after:avoid; page-break-after:avoid; widows:2; orphans:2; }
+.signature { text-align:right; text-align-last:right; text-indent:0; margin:0 0 ${P.bodyAfter}pt; line-height:${P.bodyLine}pt; break-inside:avoid; }
 .num-line { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; }
 .article-title { font-family:${fontStack(P.fTitle)}; font-size:${P.titleSize}pt; line-height:1.2; margin:0; }
 .pagedjs_right_page .article-title, .pagedjs_right_page .article-author { text-align:right; }
@@ -837,8 +856,8 @@ function buildCSS(){
 .toc-reference .toc-section-title { font-family:${fontStack(P.fTitle)}; font-size:${P.chapterTocSize}pt; font-weight:${P.chapterTocBold?"bold":"normal"}; line-height:max(calc(19pt * var(--ref-scale)),${P.chapterTocSize*1.3}pt); margin:calc(20pt * var(--ref-scale)) 0 calc(17pt * var(--ref-scale)); break-after:avoid; break-inside:avoid; }
 .toc-reference .toc-reference-row { display:flex; align-items:baseline; gap:0; padding-right:${Math.max(0,Math.min(20,Number(P.toc2PageShiftLeft ?? 5)))}mm; font-size:${P.tocEntrySize}pt; line-height:max(calc(20pt * var(--ref-scale)),${P.tocEntrySize*1.3}pt); margin:0; break-inside:avoid; }
 .toc-reference .toc-sequence { flex:0 0 calc(23pt * var(--ref-scale)); font-family:"Times New Roman",serif; font-size:calc(9pt * var(--ref-scale)); font-style:italic; font-weight:bold; color:#555; }
-.toc-reference .toc-article-name { padding-right:8pt; flex:1; min-width:0; overflow-wrap:anywhere; }
-.toc-reference .toc-meta { flex:0 0 34%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:1em; }
+.toc-reference .toc-article-name { padding-right:${P.tocTitleMetaGap}pt; flex:1; min-width:0; overflow-wrap:anywhere; }
+.toc-reference .toc-meta { flex:0 0 ${100-Math.max(30,Math.min(90,Number(P.tocTitleWidthPercent)||66))}%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:1em; }
 .toc-reference .toc-num { display:inline-block; min-width:3ch; font-family:"Times New Roman",serif; font-variant-numeric:tabular-nums; font-size:.877em; }
 .toc-reference .toc-front-entry { font-size:${P.chapterTocSize}pt; margin-bottom:12pt; }
 .poem-title { font-family:${fontStack(P.fTitle)}; font-size:${P.poemTitleSize}pt; text-align:center; margin:0 0 ${P.poemTitleAfter}pt 0; }
@@ -904,7 +923,8 @@ function renderImage(path, caption){
   const info = imgInfo.get(path);
   if(!info){ return `<div class="para">［图片缺失：${esc(path)}］</div>`; }
   const pxPerMm = 96/25.4;
-  const maxWmm = (P.pageW - P.mLeft - P.mRight) * P.imgMaxWRatio;
+  const sideExtend=Math.max(0,Math.min(Number(P.imgSideExtend)||0,P.mLeft-2,P.mRight-2));
+  const maxWmm = Math.min(P.pageW-4,(P.pageW - P.mLeft - P.mRight) * P.imgMaxWRatio+sideExtend*2);
   const natWmm = info.w/pxPerMm;
   const maxHmm=(P.pageH-P.mTop-P.mBot)*.82;
   const wmm = Math.min(P.imgAllowUpscale?maxWmm:natWmm, maxWmm, maxHmm*info.w/info.h);
@@ -913,7 +933,7 @@ function renderImage(path, caption){
   const afterGap=`<div class="img-after-gap" aria-hidden="true" style="display:block;height:${Math.max(0,Number(P.imgAfter)||0)}pt;min-height:${Math.max(0,Number(P.imgAfter)||0)}pt;line-height:0;font-size:0;margin:0;padding:0;flex:none;"></div>`;
   if(P.imgStyle === "简洁居中：图片与下方图注"){
     const cap = caption ? `<figcaption class="img-caption" style="padding-top:${P.imgLineGap}pt;font-weight:normal;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</figcaption>` : "";
-    return `<figure class="img-unit" style="padding:0;"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}${afterGap}</figure>`;
+    return `<figure class="img-unit" style="padding:0;width:calc(100% + ${sideExtend*2}mm);margin-left:-${sideExtend}mm;"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}${afterGap}</figure>`;
   }
   let blockHtml = "";
   if(P.imgBlockOn){
@@ -936,7 +956,17 @@ function renderImage(path, caption){
       capHtml = `<div class="img-caption" style="padding-top:4pt;line-height:1.6;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</div>`;
     }
   }
-  return `<div class="img-unit" style="padding:0;"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div>${afterGap}</div>`;
+  return `<div class="img-unit" style="padding:0;width:calc(100% + ${sideExtend*2}mm);margin-left:-${sideExtend}mm;"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div>${afterGap}</div>`;
+}
+function groupPictureRuns(parts){
+  if(!(Number(P.imgOnlyPageLiftLines)>0))return parts.join("\n");
+  const result=[];let pictures=[];
+  const flush=()=>{if(pictures.length){result.push(pictures.length>1?`<div class="picture-pagination">${pictures.join("\n")}</div>`:pictures[0]);pictures=[];}};
+  for(const part of parts){
+    if(/^<(?:figure|div) class="img-unit"/.test(part))pictures.push(part);
+    else{flush();result.push(part);}
+  }
+  flush();return result.join("\n");
 }
 function renderItems(items){
   const out = [];
@@ -950,11 +980,15 @@ function renderItems(items){
     if(listOpen){out.push('</ul>');listOpen=false;}
     if(kind==="img") out.push(renderImage(val.path, val.caption));
     else if(kind==="h") out.push(`<div class="subtitle"><span class="subtitle-text">${esc(val)}</span></div>`);
+    else if(kind==="signature"){
+      if(out.length)out[out.length-1]=out[out.length-1].replace('<div class="para">','<div class="para signature-leading">');
+      out.push(`<div class="signature">${renderInline(val).replace(/\n/g,"<br>")}</div>`);
+    }
     else if(kind==="num") out.push(`<div class="num-line">${esc(val)}</div>`);
     else out.push(renderPara(val,kind==="palt"));
   }
   if(listOpen)out.push("</ul>");
-  return out.join("\n");
+  return groupPictureRuns(out);
 }
 function renderPoems(items){
   const out = []; let first = true;
@@ -1226,55 +1260,74 @@ function liftPageTopImages(){
     if(placeholder.isConnected){placeholder.replaceWith(unit);unit.setAttribute('style',originalStyle);unit.removeAttribute('data-page-top-lift');}
   }
   liftedImageNodes=[];
-  const lift=Math.max(0,Math.min(10,Number(P.imgPageTopLift)||0));
-  if(!lift)return 0;
+  const lift=0; // Whole image-only pages are shifted separately; no per-image top lift.
+  const drop=Math.max(0,Math.min(10,Number(P.imgPageBottomExtend)||0));
+  const side=Math.max(0,Number(P.imgSideExtend)||0);
+  if(!lift&&!drop&&!side)return 0;
   for(const page of pagesEl.querySelectorAll('.pagedjs_page')){
-    const content=page.querySelector('.pagedjs_page_content');
-    const sheet=page.querySelector('.pagedjs_sheet');if(!content||!sheet)continue;
-    const sheetRect=sheet.getBoundingClientRect();
-    const visible=node=>{
-      const r=node.getBoundingClientRect();
-      return r.width>0 && r.height>0 && r.right>sheetRect.left+1 && r.left<sheetRect.right-1 && r.bottom>sheetRect.top+1 && r.top<sheetRect.bottom-1;
-    };
-    const unit=[...content.querySelectorAll('.img-unit')].find(node=>{
-      const image=node.querySelector('img');return image&&visible(image);
-    });if(!unit)continue;
-    const first=[...content.querySelectorAll('.img-unit,.para,.article-title,.article-author,.subtitle,.num-line,.poem-title,.poem-line,.front-title,.title-page,.chapter-page,.volume-page,.toc')]
-      .find(node=>visible(node) && (node.matches('.img-unit') || node.textContent.trim()));
-    if(first!==unit)continue;
-    const rect=unit.getBoundingClientRect();
-    const image=unit.querySelector("img"),beforeImageTop=image.getBoundingClientRect().top;
-    const scale=sheetRect.width/sheet.offsetWidth;
+    const content=page.querySelector('.pagedjs_page_content'),sheet=page.querySelector('.pagedjs_sheet');if(!content||!sheet)continue;
+    const sheetRect=sheet.getBoundingClientRect(),scale=sheetRect.width/sheet.offsetWidth;
     if(!Number.isFinite(scale)||scale<=0)continue;
-    const width=rect.width/scale,height=rect.height/scale;
-    const placeholder=document.createElement('div');
-    placeholder.setAttribute('aria-hidden','true');
-    placeholder.style.cssText=`width:${width}px;height:${height}px;break-inside:avoid;`;
-    const originalStyle=unit.getAttribute('style')||'';
-    unit.replaceWith(placeholder);
-    // The page sheet is outside the multicol flow. Keeping a placeholder prevents reflow.
-    sheet.style.position='relative';sheet.appendChild(unit);
-    unit.style.setProperty('position','absolute','important');
-    unit.style.setProperty('left',`${(rect.left-sheetRect.left)/scale}px`,'important');
-    unit.style.setProperty('top',`${(rect.top-sheetRect.top)/scale-lift*96/25.4}px`,'important');
-    unit.style.setProperty('width',`${width}px`,'important');
-    unit.style.setProperty('margin','0','important');
-    unit.style.setProperty('transform','none','important');
-    unit.style.setProperty('z-index','15','important');
-    // Reparenting changes the CSS containing block. Correct against the actual image,
-    // not just the wrapper's theoretical coordinates, and verify the resulting displacement.
-    const expectedTop=beforeImageTop-lift*96/25.4*scale;
-    const correction=(expectedTop-image.getBoundingClientRect().top)/scale;
-    unit.style.setProperty('transform',`translateY(${correction}px)`,'important');
-    const actualMm=(beforeImageTop-image.getBoundingClientRect().top)/scale*25.4/96;
-    unit.setAttribute('data-page-top-lift',String(lift));
-    unit.setAttribute('data-actual-lift-mm',actualMm.toFixed(2));
-    liftedImageNodes.push({unit,placeholder,originalStyle,actualMm});
+    const visible=node=>{const r=node.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>sheetRect.left+1&&r.left<sheetRect.right-1&&r.bottom>sheetRect.top+1&&r.top<sheetRect.bottom-1;};
+    const items=[...content.querySelectorAll('.img-unit,.para,.article-title,.article-author,.subtitle,.num-line,.poem-title,.poem-line,.front-title,.title-page,.chapter-page,.volume-page,.toc')].filter(node=>visible(node)&&(node.matches('.img-unit')||node.textContent.trim()));
+    const units=[...content.querySelectorAll('.img-unit')].filter(unit=>unit.querySelector('img')&&visible(unit.querySelector('img')));
+    for(const unit of units){
+      let displacement=items[0]===unit?-lift:items[items.length-1]===unit?drop:0;
+      if(!displacement&&!side)continue;
+      const rect=unit.getBoundingClientRect(),image=unit.querySelector('img'),beforeImageTop=image.getBoundingClientRect().top;
+      const inset=(printInset()+2)*96/25.4;
+      let top=(rect.top-sheetRect.top)/scale+displacement*96/25.4;
+      const height=rect.height/scale,width=rect.width/scale;
+      let minimum=inset;
+      const header=sheet.querySelector('.pagehdr');
+      if(header){
+        const h=header.getBoundingClientRect(),picture=image.getBoundingClientRect();
+        if(picture.right>h.left && picture.left<h.right)minimum=Math.max(minimum,(h.bottom-sheetRect.top)/scale+4);
+      }
+      const originalTop=(rect.top-sheetRect.top)/scale;
+      // Upward moves cannot collide with content below; only apply the upper boundary.
+      if(displacement<0)top=Math.min(originalTop,Math.max(minimum,top));
+      else if(displacement>0)top=Math.max(originalTop,Math.min(top,sheet.offsetHeight-inset-height));
+      else top=originalTop;
+      const placeholder=document.createElement('div');placeholder.setAttribute('aria-hidden','true');
+      placeholder.style.cssText=`width:100%;height:${height}px;break-inside:avoid;`;
+      const originalStyle=unit.getAttribute('style')||'';unit.replaceWith(placeholder);sheet.style.position='relative';sheet.appendChild(unit);
+      for(const [key,value] of Object.entries({position:'absolute',left:`${(rect.left-sheetRect.left)/scale}px`,top:`${top}px`,width:`${width}px`,margin:'0',transform:'none','z-index':'15'}))unit.style.setProperty(key,value,'important');
+      const targetImageTop=beforeImageTop+(top-(rect.top-sheetRect.top)/scale)*scale;
+      unit.style.setProperty('transform',`translateY(${(targetImageTop-image.getBoundingClientRect().top)/scale}px)`,'important');
+      const actualMm=(beforeImageTop-image.getBoundingClientRect().top)/scale*25.4/96;
+      unit.setAttribute('data-page-top-lift',String(lift));unit.setAttribute('data-actual-lift-mm',actualMm.toFixed(2));
+      liftedImageNodes.push({unit,placeholder,originalStyle,actualMm,isTop:displacement<0,boundaryLimited:displacement<0 && originalTop-top<lift*96/25.4-0.5});
+    }
   }
   return liftedImageNodes.length;
 }
+function liftImageOnlyPages(){
+  const points=Math.max(0,Number(P.imgOnlyPageLiftLines)||0)*Number(P.bodyLine);
+  let count=0;
+  for(const page of pagesEl.querySelectorAll('.pagedjs_page')){
+    const area=page.querySelector('.pagedjs_area'),sheet=page.querySelector('.pagedjs_sheet');
+    if(!area||!sheet)continue;
+    area.style.removeProperty('transform');
+    page.removeAttribute('data-image-only-lift-pt');
+    if(!points||!page.querySelector('.img-unit img'))continue;
+    if(page.querySelector(".picture-pagination")){page.setAttribute("data-image-only-lift-pt",String(points));count++;continue;}
+    // Captions belong to image groups; title/body/signature text makes this a mixed page.
+    const hasText=[...area.querySelectorAll('.para,.article-title,.article-author,.subtitle,.signature,.num-line,.poem-title,.poem-line,.front-title,.title-page,.chapter-page,.volume-page,.toc')]
+      .some(node=>!node.closest('.img-unit')&&node.textContent.trim()&&node.getClientRects().length);
+    if(hasText)continue;
+    // Move the multicol viewport itself, so its top clipping boundary moves too.
+    area.style.setProperty('transform',`translateY(-${points}pt)`,'important');
+    // Horizontal-extension overlays live on the sheet rather than inside the area.
+    for(const unit of sheet.querySelectorAll(':scope > .img-unit')){
+      const oldTop=parseFloat(unit.style.top);
+      if(Number.isFinite(oldTop))unit.style.setProperty('top',`${oldTop-points*96/72}px`,'important');
+    }
+    page.setAttribute('data-image-only-lift-pt',String(points));count++;
+  }
+  return count;
+}
 function postProcess(){
-  const liftedImages=liftPageTopImages();
   const pages = Array.from(pagesEl.querySelectorAll(".pagedjs_page"));
   let bodyStart = -1;
   pages.forEach((pg,i)=>{ if(bodyStart<0 && (pg.querySelector(".volume-page")||pg.querySelector(".chapter-page")||pg.querySelector(".article"))) bodyStart = i; });
@@ -1292,8 +1345,10 @@ function postProcess(){
     const tocIndex = isIllustratedToc() && pg.querySelector('.toc-illustrated') ? illustratedTocPage++ : -1;
     decoratePage(pg, i, bodyStart, tocIndex);
   });
+  const liftedImages=liftPageTopImages();
   document.getElementById("stInfo").textContent = `共 ${pages.length} 页 · 正文从第 ${Math.max(0,bodyStart+1)} 页起`;
-  document.getElementById("stPage").textContent = `正文 ${Object.keys(titlePage).length} 项已标页${Number(P.imgPageTopLift)>0?` · 页首图片 ${liftedImages} 组 · 设定 ${Number(P.imgPageTopLift)} mm / 实测 ${liftedImageNodes.length?Math.min(...liftedImageNodes.map(item=>item.actualMm)).toFixed(1):"0"} mm` : ""}`;
+  const imageOnlyCount=liftImageOnlyPages();
+  document.getElementById("stPage").textContent = `正文 ${Object.keys(titlePage).length} 项已标页 · 纯图片页 ${imageOnlyCount} 页上移 ${Number(P.imgOnlyPageLiftLines)||0} 行`;
   updateSpineEstimate();
 }
 function pageIsRight(pg){ return pg.classList.contains("pagedjs_right_page") || pg.classList.contains("pagedjs_first_page"); }

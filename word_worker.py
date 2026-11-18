@@ -32,6 +32,8 @@ def main():
     for key, attr in {"fChapterNumber":"F_CHAPTER_NUMBER", "fChapterTitle":"F_CHAPTER_TITLE", "fChapterIntro":"F_CHAPTER_INTRO"}.items():
         if key in p: setattr(full.book, attr, str(p[key]))
     full.book.IMG_LEADER_LENGTH = max(0, min(120, float(p.get("imgLeaderLength", 15))))
+    full.book.IMG_ONLY_PAGE_LIFT_LINES = max(0,min(4,float(p.get("imgOnlyPageLiftLines",2))))
+    full.book.IMG_SIDE_EXTEND = max(0,min(25,float(p.get("imgSideExtend",0))))
     full.book.IMG_AFTER = max(0, min(60, float(p.get("imgAfter", 6))))
     full.book.IMG_ALLOW_UPSCALE = bool(p.get("imgAllowUpscale", False))
     full.book.F_BODY_ALT = str(p.get("fBodyAlt", "方正楷体_GBK"))
