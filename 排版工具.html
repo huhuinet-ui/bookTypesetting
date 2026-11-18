@@ -213,7 +213,7 @@ const GROUPS = [
    {k:"authorSize",l:"作者字号",t:"num",d:13,u:"pt",s:0.5,min:6,max:40},
  ]},
  { title:"正文", items:[
-   {k:"bodySize",l:"正文字号（文章／前言／后记共用）",t:"num",d:9,u:"pt",s:0.5,min:5,max:20},
+   {k:"bodySize",l:"正文字号（文章／前言／后记共用）",t:"num",d:10.5,u:"pt",s:0.5,min:5,max:20},
    {k:"bodyIndent",l:"首行缩进",t:"num",d:1.5,u:"字",s:0.1,min:0,max:10},
    {k:"bodyAfter",l:"段后间距",t:"num",d:19.5,u:"pt",s:0.5,min:0,max:60},
    {k:"bodyLine",l:"行距",t:"num",d:19.5,u:"pt",s:0.5,min:5,max:60},
@@ -429,7 +429,7 @@ function buildForm(){
     if(g.title==="字体") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">用 {{文字}} 标记特殊字体；单独一行 {{ 开始、}} 结束可标记多段正文。字号跟随正文，可与 **加粗／上色** 叠加。</small></div>`;
     if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">连续两张及以上插图会进入独立图片页，顶部扩展空间参与分页，可容纳更多图片；图片与图注整体不拆页。设为 0 关闭此规则。此分页方式同步应用于预览、PDF 和 Word。</small></div>`;
     if(g.title==="插图") html+=`<div class="field wide"><small style="line-height:1.8;color:#718278">整组图片后留白：图注末尾到下一段文字或下一张图片的距离；不控制图片与图注之间的距离。1 pt ≈ 0.35 mm，6 pt 约为 2.1 mm。</small></div>`;
-    if(g.title==="前言 / 后记") html+=`<div class="field wide"><label>前言、后记正文字号</label><output id="frontBodySizeInfo">${P.bodySize} pt（与文章正文一致，默认 9 pt）</output><small>在「正文」分组调整共用正文字号。</small></div>`;
+    if(g.title==="前言 / 后记") html+=`<div class="field wide"><label>前言、后记正文字号</label><output id="frontBodySizeInfo">${P.bodySize} pt（与文章正文一致，默认 10.5 pt）</output><small>在「正文」分组调整共用正文字号。</small></div>`;
     if(g.title==="书脊宽度") html+=`<div class="field wide"><output id="spineResult" aria-live="polite">导入书稿并完成排版后自动计算。</output><small style="line-height:1.8;color:#718278">估算公式：补齐后内文页数 ÷ 2 × 单张纸厚度 ＋ 装订附加厚度。纸厚默认 0.1 mm 仅作示例，请按实际纸张或印厂数据填写；不包含封面纸、精装书壳。结果依据网页总页数，Word 分页不同需按其实际页数复核。</small></div>`;
     html += `</div>`;
   }
@@ -464,7 +464,7 @@ function readForm(){
     else P[it.k] = el.value;
   }
   const info=document.getElementById("frontBodySizeInfo");
-  if(info)info.textContent=`${P.bodySize} pt（与文章正文一致，默认 9 pt）`;
+  if(info)info.textContent=`${P.bodySize} pt（与文章正文一致，默认 10.5 pt）`;
 }
 
 /* ==================== 工具函数 ==================== */
@@ -551,9 +551,19 @@ function classify(lines, poem){
     const s = ls[k];
     if(!s){ k++; continue; }
     const isDate=value=>/^\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?\s*$/.test(value);
-    if(!altBlock && isDate(s)){items.push(["signature",s]);k++;continue;}
-    if(!altBlock && k+1<m && isDate(ls[k+1]) && s.length<=20 && !/[。！？；：，、#]/.test(s) && (k===0||!ls[k-1])){
-      items.push(["signature",s+"\n"+ls[k+1]]);k+=2;continue;
+    let following=k+1;
+    while(following<m && !ls[following])following++;
+    const isName=value=>value.length>=1 && value.length<=20 && !/[。！？；：，、#*{}\[\]()]/.test(value);
+    if(!altBlock && isDate(s)){
+      let end=following+1;
+      while(end<m && !ls[end])end++;
+      if(following<m && isName(ls[following]) && (end===m || ls[end].startsWith('#'))){
+        items.push(["signature",s+"\n"+ls[following]]);k=following+1;continue;
+      }
+      items.push(["signature",s]);k++;continue;
+    }
+    if(!altBlock && following<m && isDate(ls[following]) && isName(s) && (k===0||!ls[k-1])){
+      items.push(["signature",s+"\n"+ls[following]]);k=following+1;continue;
     }
     if(s==="{{"){altBlock=true;k++;continue;}
     if(s==="}}"){altBlock=false;k++;continue;}
@@ -1113,7 +1123,7 @@ function splitChapterHeading(value){
   const text=String(value||"").trim();
   const numbers="[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+";
   const patterns=[
-    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|节)${numbers}|[上中下][章篇部卷集])(?:[\\s　:：、.．—-]*)(.*)$`),
+    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)${numbers}|[上中下][章篇部卷集辑])(?:[\\s　:：、.．—-]*)(.*)$`),
     new RegExp(`^(${numbers}[、.．）)])\\s*(.*)$`),
     new RegExp(`^(${numbers})[\\s　:：—-]+(.*)$`),
   ];

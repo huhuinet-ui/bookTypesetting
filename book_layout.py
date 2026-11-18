@@ -123,7 +123,7 @@ AUTHOR_SIZE = 13
 # 作者名字号（磅）：13 磅。
 
 # ---- 正文 ----
-BODY_SIZE = 9
+BODY_SIZE = 10.5
 # 正文字号（磅）：9 磅，就是 Word 里的"小五"。
 BODY_INDENT = 1.5
 # 首行缩进：每个自然段的第一行往里缩进 1.5 个汉字。
@@ -262,10 +262,16 @@ WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
 
 def add_anchor(p, token):
-    """在段落末尾追加一个隐藏锚点（白色 1 磅 ASCII），仅供测量页码时在 PDF 里定位用。
-    体积极小、不引起换行，因此不影响分页；正式文档不会调用它。"""
+    """Add a nonprinting bookmark without changing title width or pagination."""
     if token:
-        R(p, token, cn=F_BODY, size=1, color=WHITE, af="Times New Roman")
+        start = OxmlElement('w:bookmarkStart')
+        ident = str(len(p.part.element.findall('.//' + qn('w:bookmarkStart'))))
+        start.set(qn('w:id'), ident)
+        start.set(qn('w:name'), token)
+        end = OxmlElement('w:bookmarkEnd')
+        end.set(qn('w:id'), ident)
+        p._p.insert(1 if p._p.pPr is not None else 0, start)
+        p._p.append(end)
 
 
 def R(p, text, cn=None, size=None, color=BLACK, bold=False,
@@ -867,12 +873,23 @@ def classify(lines, base_dir=None, poem=False):
         if not s:
             k += 1
             continue
+        following = k + 1
+        while following < m and not ls[following]:
+            following += 1
+        def is_signature_name(value):
+            return 1 <= len(value) <= 20 and not re.search(r"[。！？；：，、#*{}\[\]()]", value)
         if not in_alt and SIGNATURE_DATE_RE.fullmatch(s):
+            # A date followed by a final name is one indivisible signature block.
+            end = following + 1
+            while end < m and not ls[end]:
+                end += 1
+            if (following < m and is_signature_name(ls[following])
+                    and (end == m or ls[end].startswith('#'))):
+                items.append(("signature", s + "\n" + ls[following])); k = following + 1; continue
             items.append(("signature", s)); k += 1; continue
-        if (not in_alt and k+1 < m and SIGNATURE_DATE_RE.fullmatch(ls[k+1])
-                and 1 <= len(s) <= 20 and not re.search(r"[。！？；：，、#]", s)
-                and (k == 0 or not ls[k-1])):
-            items.append(("signature", s + "\n" + ls[k+1])); k += 2; continue
+        if (not in_alt and following < m and SIGNATURE_DATE_RE.fullmatch(ls[following])
+                and is_signature_name(s) and (k == 0 or not ls[k-1])):
+            items.append(("signature", s + "\n" + ls[following])); k = following + 1; continue
         if s == ALT_OPEN:      # 单独一行 {{ → 开启特殊字体块
             in_alt = True; k += 1; continue
         if s == ALT_CLOSE:     # 单独一行 }} → 结束特殊字体块
@@ -1202,7 +1219,7 @@ def build_article(doc, art, first, recto=True, anchor=None):
     pt = doc.add_paragraph()
     set_para(pt, align, 0, 0, 1.0)
     R(pt, art["title"], cn=F_TITLE, size=TITLE_SIZE)
-    add_anchor(pt, anchor)   # anchor：仅测量页码时传入的隐藏唯一标记（正式文档不传）
+    add_anchor(pt, anchor)   # 非打印书签用于整本书的最终页码校验
 
     add_deco_rect(pt, deco_x(recto), DECO_TOP, DECO_W, DECO_H, str(BOOK_COLOR))
 
@@ -1317,7 +1334,7 @@ def add_volume_page(doc, volume, anchor=None):
 def add_chapter_page(doc, title, intro=None, anchor=None):
     """篇章页：章节名居中 + 居中下划线 +（可选）下方居中文本框。占一整页。
     换页由「节」的分页负责，这里不再加 page_break。
-    anchor：仅供测量页码时传入的唯一隐藏标记（正式文档不传）。"""
+    anchor：用于最终页码校验的非打印书签。"""
     for k in range(CHAPTER_TOP_LINES):
         sp = doc.add_paragraph()
         set_para(sp, LEFT, 0, 0, BODY_LINE)

@@ -13,10 +13,10 @@
 
 成书顺序：扉页 → 前言页 → 目录页 → 正文 → 后记页（前言/目录不显示页码，正文从第 1 页开始；
 目录里「前言/自序」只列标题、不写页码）。
-目录页码自动计算：脚本会先单独排一遍正文并转 PDF，量出每章/每篇的真实起始页，再写进目录。
+目录页码自动计算：完整排版后读取书签的实际页码，复核目录与标题左右位置，分页稳定后才导出。
 改样式：分别去改 book_layout.py 和 book_toc_horizontal.py 顶部参数区。
 """
-import io, os, re, sys, subprocess, tempfile
+import io, os, sys, tempfile
 if (getattr(sys.stdout, "encoding", "") or "").lower() != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
@@ -26,7 +26,6 @@ from docx.enum.section import WD_SECTION
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement, parse_xml
 
-import fitz
 import book_layout as book
 import book_toc_horizontal as toc
 
@@ -108,8 +107,7 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
     """在 doc 里排正文（第一个正文节用 first_sec，正文页码从 1 开始）。
     篇章页单独成节、置空页眉（暗码：不显示页码）；章内文章合为一节、带奇偶页眉。
     page_map：每篇标题 → 正文起始页（用于判断该页是奇数页/偶数页，好让标题色块镜像）。
-    anchors：传入一个空列表时，会给每个章节/文章标题挂一个唯一隐藏锚点，并把 (锚点, 标题) 追加进去，
-             供 measure_pages 精确定位页码（正式文档传 None，不挂锚点）。"""
+    anchors：传入一个空列表时，给卷、章节和文章挂非打印书签，用于读取完整成书的最终页码。"""
     set_page_number_start(first_sec._sectPr, 1)   # 只有正文第一节重置页码，其余节连续编号
 
     def _tok(title):
@@ -173,13 +171,13 @@ def add_front_matter(doc, title, text):
 
 def remove_page_number_start(sectPr):
     """移除节里的页码重置（w:pgNumType），让它接着上一节连续编号。"""
-    pg = sectPr.find(qn("w:pgNumType"))
-    if pg is not None:
+    for pg in list(sectPr.findall(qn("w:pgNumType"))):
         sectPr.remove(pg)
 
 
 def set_page_number_start(sectPr, start=1):
     """让这一节的页码从 start 开始编号（放在 w:cols 之前，符合 Word 元素顺序）。"""
+    remove_page_number_start(sectPr)
     pg = OxmlElement("w:pgNumType")
     pg.set(qn("w:start"), str(start))
     cols = sectPr.find(qn("w:cols"))
@@ -189,58 +187,10 @@ def set_page_number_start(sectPr, start=1):
         sectPr.append(pg)
 
 
-def measure_pages(chapters):
-    """单独排一遍正文、转 PDF，量出每章/每篇的起始页（正文页码，从 1 起）。
-    用「唯一隐藏锚点」定位（排版时给每个标题挂一个正文里不会出现的 token），
-    避免短标题（如「启程/礼物/意义」）被正文里的同名词提前命中而页码重复。
-    返回 (page_map, total_pages)：total_pages 用于算页码补零位数。"""
-    tmp_docx = os.path.join(tempfile.gettempdir(), "_bookfull_body.docx")
-    tmp_pdf = os.path.join(tempfile.gettempdir(), "_bookfull_body.pdf")
-
-    doc, sec = book.new_doc()
-    anchors = []                          # [(token, title), ...]
-    build_body(doc, chapters, sec, anchors=anchors)
-    doc.save(tmp_docx)
-
-    ps = ("$ErrorActionPreference = 'Stop'; "
-          "try { "
-          "$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
-          f"$d = $w.Documents.Open('{tmp_docx}'); $d.Fields.Update(); $d.Repaginate(); "
-          f"$d.SaveAs([ref]'{tmp_pdf}', [ref]17); $d.Close($false); $w.Quit(); "
-          "} catch { Write-Output ('WORD_ERROR: ' + $_.Exception.Message); exit 1 }")
-    r = subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps], capture_output=True)
-    if r.returncode != 0:
-        raw = (r.stdout or b"") + b"\n" + (r.stderr or b"")
-        try:
-            msg = raw.decode("gbk")
-        except UnicodeDecodeError:
-            msg = raw.decode("utf-8", "replace")
-        raise RuntimeError("Word 转 PDF 失败，详情：\n" + msg)
-
-    d = fitz.open(tmp_pdf)
-    total_pages = len(d)
-    full = [re.sub(r"\s+", "", d[i].get_text()) for i in range(total_pages)]
-    page_map = {}
-    for tok, title in anchors:
-        for i, txt in enumerate(full):
-            if tok in txt:
-                page_map[title] = i + 1
-                break
-    d.close()
-    os.remove(tmp_docx)
-    os.remove(tmp_pdf)
-    return page_map, total_pages
-
-
-def main():
-    book.SRC = SRC
-    book.BOOK_NAME = BOOK_NAME
-
-    data = book.parse_book()
+def build_document(data, page_map, pad):
+    """Build the exact final book, including front matter and print decorations."""
     chapters = data["chapters"]
-    page_map, total_pages = measure_pages(chapters)
-    pad = len(str(total_pages)) if total_pages > 0 else 0   # 页码补零位数（87页→2位，123页→3位）
-
+    anchors = []
     doc, sec1 = book.new_doc()      # 第一节 = 前言页（无前言时就是目录页）
 
     if TITLE_PAGE:
@@ -267,7 +217,7 @@ def main():
     build_toc(doc, chapters, page_map, pad=pad)
 
     sec2 = book.add_book_section(doc, WD_SECTION.ODD_PAGE)   # 正文第一节：从奇数页(右页)开始，保证正文页码奇偶=物理页奇偶，色块/标题镜像才和页眉一致
-    build_body(doc, chapters, sec2, pad=pad, page_map=page_map)
+    build_body(doc, chapters, sec2, pad=pad, page_map=page_map, anchors=anchors)
 
     if data["afterword"] is not None:  # 最后一篇文章后插后记页
         add_front_matter(doc, data["afterword_title"], data["afterword"])
@@ -279,7 +229,17 @@ def main():
         for sec in doc.sections:
             book.add_crop_marks(sec)
 
-    doc.save(OUT)
+    return doc, anchors
+
+
+def main():
+    from word_pagination import save_paginated
+    book.SRC = SRC
+    book.BOOK_NAME = BOOK_NAME
+    data = book.parse_book()
+    chapters = data["chapters"]
+    page_map, total_pages, pad, engine = save_paginated(
+        lambda pages, digits: build_document(data, pages, digits), OUT)
     n_ch = sum(1 for c in chapters if c["title"] is not None)
     n_art = sum(len(c["articles"]) for c in chapters)
     print(f"已生成 {OUT}")
