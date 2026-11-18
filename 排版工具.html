@@ -264,6 +264,7 @@ const GROUPS = [
    {k:"captionSize",l:"图注字号",t:"num",d:8,u:"pt",s:0.5,min:5,max:20},
    {k:"imgMaxWRatio",l:"最大宽度占版心比例",t:"num",d:0.9,u:"",s:0.05,min:0.1,max:1},
    {k:"imgAllowUpscale",l:"小图也按版心比例放大",t:"bool",d:false},
+   {k:"imgPageTopLift",l:"页首图片上移（预览／PDF）",t:"num",d:3,u:"mm",s:0.5,min:0,max:10},
    {k:"imgAfter",l:"整组图片后留白（含图注）",t:"num",d:6,u:"pt",s:1,min:0,max:60},
    {k:"imgBlockOn",l:"图片衬色块",t:"bool",d:true},
    {k:"imgBlockSize",l:"色块尺寸比例",t:"num",d:0.7,u:"",s:0.05,min:0.1,max:1.5},
@@ -604,7 +605,7 @@ function parseBook(srcText){
       else if(AFTERWORD_KEYS.includes(headingKind)){ target=afterword; afterwordTitle=kind; }
       i++;
       if(target===null) continue;
-      while(i<n && !raw[i].trim().startsWith("#")){ if(raw[i].trim() || target!==titlePageText) target.push(raw[i].trim()); i++; }
+      while(i<n && !/^#{1,4}(?:\s|$)/.test(raw[i].trim())){ if(raw[i].trim() || target!==titlePageText) target.push(raw[i].trim()); i++; }
       continue;
     }
     if(/^##\s+/.test(s)){
@@ -844,12 +845,12 @@ function buildCSS(){
 .poem-meta { font-size:${P.poemMetaSize}pt; text-align:center; margin:0 0 ${P.poemMetaAfter}pt 0; }
 .poem-line { font-size:${P.poemLineSize}pt; text-align:center; line-height:${P.poemLine}pt; margin:0; }
 .poem-stanza { height:${P.poemStanzaGap}pt; }
-.img-unit { text-align:center; margin:0; padding:0 0 ${P.imgAfter}pt; break-inside:avoid; line-height:0; }
+.img-unit { display:flow-root; text-align:center; margin:0; padding:0; break-inside:avoid; line-height:0; }
 .img-frame { position:relative; display:inline-block; vertical-align:top; line-height:normal; }
 .img-frame img { display:block; position:relative; z-index:1; }
 .img-block { position:absolute; z-index:0; }
 .img-line { position:absolute; z-index:2; overflow:visible; }
-.img-caption { font-family:${fontStack(P.fBody)}; font-size:${P.captionSize}pt; font-weight:normal; text-align:center; text-indent:0; letter-spacing:0; word-spacing:0; font-kerning:none; font-variant-ligatures:none; font-stretch:normal; text-align-last:auto; text-justify:none; line-break:strict; line-height:1.6; white-space:normal; overflow-wrap:anywhere; margin:0; }
+.img-caption { font-family:${fontStack(P.fBody)}; font-size:${P.captionSize}pt; font-weight:normal; text-align:center; text-indent:0; letter-spacing:0; word-spacing:0; font-kerning:none; font-variant-ligatures:none; font-stretch:normal; text-align-last:auto; text-justify:none; line-break:strict; line-height:1.6; white-space:normal; overflow-wrap:anywhere; margin:0 0 -${(P.captionSize*.3).toFixed(2)}pt; }
 `;
 }
 
@@ -909,9 +910,10 @@ function renderImage(path, caption){
   const wmm = Math.min(P.imgAllowUpscale?maxWmm:natWmm, maxWmm, maxHmm*info.w/info.h);
   const hmm = wmm * info.h/info.w;
   const url = info.url;
+  const afterGap=`<div class="img-after-gap" aria-hidden="true" style="display:block;height:${Math.max(0,Number(P.imgAfter)||0)}pt;min-height:${Math.max(0,Number(P.imgAfter)||0)}pt;line-height:0;font-size:0;margin:0;padding:0;flex:none;"></div>`;
   if(P.imgStyle === "简洁居中：图片与下方图注"){
     const cap = caption ? `<figcaption class="img-caption" style="padding-top:${P.imgLineGap}pt;font-weight:normal;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</figcaption>` : "";
-    return `<figure class="img-unit" style="padding-bottom:${P.imgAfter}pt;"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}</figure>`;
+    return `<figure class="img-unit" style="padding:0;"><img src="${escAttr(url)}" alt="${escAttr(caption || "插图")}" style="display:block;margin:0 auto;width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${cap}${afterGap}</figure>`;
   }
   let blockHtml = "";
   if(P.imgBlockOn){
@@ -934,7 +936,7 @@ function renderImage(path, caption){
       capHtml = `<div class="img-caption" style="padding-top:4pt;line-height:1.6;overflow-wrap:anywhere;">${captionNoOrphans(caption)}</div>`;
     }
   }
-  return `<div class="img-unit" style="padding-bottom:${P.imgAfter}pt;"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div></div>`;
+  return `<div class="img-unit" style="padding:0;"><div class="img-frame" style="width:${wmm.toFixed(2)}mm;">${blockHtml}<img src="${url}" style="width:${wmm.toFixed(2)}mm;height:${hmm.toFixed(2)}mm;">${capHtml}</div>${afterGap}</div>`;
 }
 function renderItems(items){
   const out = [];
@@ -1073,6 +1075,17 @@ function renderIllustratedToc(data){
   });
   return html+'</div>';
 }
+function splitChapterHeading(value){
+  const text=String(value||"").trim();
+  const numbers="[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+";
+  const patterns=[
+    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|节)${numbers}|[上中下][章篇部卷集])(?:[\\s　:：、.．—-]*)(.*)$`),
+    new RegExp(`^(${numbers}[、.．）)])\\s*(.*)$`),
+    new RegExp(`^(${numbers})[\\s　:：—-]+(.*)$`),
+  ];
+  for(const pattern of patterns){const match=text.match(pattern);if(match)return {number:match[1],title:match[2].trim()};}
+  return {number:"",title:text};
+}
 function renderBook(){
   const d = parsedData;
   const out = []; let firstEl = true;
@@ -1122,12 +1135,8 @@ function renderBook(){
       const br = firstInBody ? "" : startsVolume ? " break-page" : " break-right";
       let cp;
       if(isChap4() || isChap5()){
-        const ordinal=d.chapters.slice(0,chapterIdx+1).filter(c=>c.title!=null).length;
-        const match=String(ch.title).match(/^(第[一二三四五六七八九十百零〇两\d]+[章篇部卷])(?:[\s　:：、.．—-]*)(.*)$/);
-        const digits="零一二三四五六七八九";
-        const n=ordinal<10?digits[ordinal]:ordinal<100?((ordinal<20?"":digits[Math.floor(ordinal/10)])+"十"+(ordinal%10?digits[ordinal%10]:"")):String(ordinal);
-        const number=match?match[1]:"第"+n+"章", title=match&&match[2]?match[2]:ch.title;
-        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout"><div class="chap4-number">${esc(number)}</div><div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
+        const {number,title}=splitChapterHeading(ch.title);
+        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout">${number?`<div class="chap4-number">${esc(number)}</div>`:""}<div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
       } else if(isChap2()){
         cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
       } else {
@@ -1209,7 +1218,63 @@ async function renderBookPreview(){
   postProcess();
 }
 
+let liftedImageNodes=[];
+function liftPageTopImages(){
+  // Restore previous overlays before detecting page-first items again.
+  for(const entry of liftedImageNodes){
+    const {unit,placeholder,originalStyle}=entry;
+    if(placeholder.isConnected){placeholder.replaceWith(unit);unit.setAttribute('style',originalStyle);unit.removeAttribute('data-page-top-lift');}
+  }
+  liftedImageNodes=[];
+  const lift=Math.max(0,Math.min(10,Number(P.imgPageTopLift)||0));
+  if(!lift)return 0;
+  for(const page of pagesEl.querySelectorAll('.pagedjs_page')){
+    const content=page.querySelector('.pagedjs_page_content');
+    const sheet=page.querySelector('.pagedjs_sheet');if(!content||!sheet)continue;
+    const sheetRect=sheet.getBoundingClientRect();
+    const visible=node=>{
+      const r=node.getBoundingClientRect();
+      return r.width>0 && r.height>0 && r.right>sheetRect.left+1 && r.left<sheetRect.right-1 && r.bottom>sheetRect.top+1 && r.top<sheetRect.bottom-1;
+    };
+    const unit=[...content.querySelectorAll('.img-unit')].find(node=>{
+      const image=node.querySelector('img');return image&&visible(image);
+    });if(!unit)continue;
+    const first=[...content.querySelectorAll('.img-unit,.para,.article-title,.article-author,.subtitle,.num-line,.poem-title,.poem-line,.front-title,.title-page,.chapter-page,.volume-page,.toc')]
+      .find(node=>visible(node) && (node.matches('.img-unit') || node.textContent.trim()));
+    if(first!==unit)continue;
+    const rect=unit.getBoundingClientRect();
+    const image=unit.querySelector("img"),beforeImageTop=image.getBoundingClientRect().top;
+    const scale=sheetRect.width/sheet.offsetWidth;
+    if(!Number.isFinite(scale)||scale<=0)continue;
+    const width=rect.width/scale,height=rect.height/scale;
+    const placeholder=document.createElement('div');
+    placeholder.setAttribute('aria-hidden','true');
+    placeholder.style.cssText=`width:${width}px;height:${height}px;break-inside:avoid;`;
+    const originalStyle=unit.getAttribute('style')||'';
+    unit.replaceWith(placeholder);
+    // The page sheet is outside the multicol flow. Keeping a placeholder prevents reflow.
+    sheet.style.position='relative';sheet.appendChild(unit);
+    unit.style.setProperty('position','absolute','important');
+    unit.style.setProperty('left',`${(rect.left-sheetRect.left)/scale}px`,'important');
+    unit.style.setProperty('top',`${(rect.top-sheetRect.top)/scale-lift*96/25.4}px`,'important');
+    unit.style.setProperty('width',`${width}px`,'important');
+    unit.style.setProperty('margin','0','important');
+    unit.style.setProperty('transform','none','important');
+    unit.style.setProperty('z-index','15','important');
+    // Reparenting changes the CSS containing block. Correct against the actual image,
+    // not just the wrapper's theoretical coordinates, and verify the resulting displacement.
+    const expectedTop=beforeImageTop-lift*96/25.4*scale;
+    const correction=(expectedTop-image.getBoundingClientRect().top)/scale;
+    unit.style.setProperty('transform',`translateY(${correction}px)`,'important');
+    const actualMm=(beforeImageTop-image.getBoundingClientRect().top)/scale*25.4/96;
+    unit.setAttribute('data-page-top-lift',String(lift));
+    unit.setAttribute('data-actual-lift-mm',actualMm.toFixed(2));
+    liftedImageNodes.push({unit,placeholder,originalStyle,actualMm});
+  }
+  return liftedImageNodes.length;
+}
 function postProcess(){
+  const liftedImages=liftPageTopImages();
   const pages = Array.from(pagesEl.querySelectorAll(".pagedjs_page"));
   let bodyStart = -1;
   pages.forEach((pg,i)=>{ if(bodyStart<0 && (pg.querySelector(".volume-page")||pg.querySelector(".chapter-page")||pg.querySelector(".article"))) bodyStart = i; });
@@ -1228,7 +1293,7 @@ function postProcess(){
     decoratePage(pg, i, bodyStart, tocIndex);
   });
   document.getElementById("stInfo").textContent = `共 ${pages.length} 页 · 正文从第 ${Math.max(0,bodyStart+1)} 页起`;
-  document.getElementById("stPage").textContent = `正文 ${Object.keys(titlePage).length} 项已标页`;
+  document.getElementById("stPage").textContent = `正文 ${Object.keys(titlePage).length} 项已标页${Number(P.imgPageTopLift)>0?` · 页首图片 ${liftedImages} 组 · 设定 ${Number(P.imgPageTopLift)} mm / 实测 ${liftedImageNodes.length?Math.min(...liftedImageNodes.map(item=>item.actualMm)).toFixed(1):"0"} mm` : ""}`;
   updateSpineEstimate();
 }
 function pageIsRight(pg){ return pg.classList.contains("pagedjs_right_page") || pg.classList.contains("pagedjs_first_page"); }

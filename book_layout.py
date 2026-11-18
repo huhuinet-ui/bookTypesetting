@@ -982,7 +982,7 @@ def parse_book(src=None):
             i += 1
             if target is None:
                 continue
-            while i < n and not raw[i].strip().startswith("#"):
+            while i < n and not re.match(r"^#{1,4}(?:\s|$)", raw[i].strip()):
                 if raw[i].strip() or target is not title_page:
                     target.append(raw[i].strip())
                 i += 1

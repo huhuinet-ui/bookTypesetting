@@ -25,6 +25,21 @@ def wrap_vertical_intro(text, capacity):
     return "\n".join(result)
 
 
+def split_chapter_heading(title):
+    """Preserve the manuscript's sequence label; never invent a chapter number."""
+    text=str(title).strip()
+    numbers=r"[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+"
+    patterns=[
+        rf"^((?:第)?{numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|节){numbers}|[上中下][章篇部卷集])(?:[\s　:：、.．—-]*)(.*)$",
+        rf"^({numbers}[、.．）)])\s*(.*)$",
+        rf"^({numbers})[\s　:：—-]+(.*)$",
+    ]
+    for pattern in patterns:
+        match=re.match(pattern,text)
+        if match:return match[1],match[2].strip()
+    return "",text
+
+
 def install_chapters(full, params, artwork):
     book=full.book
     style=str(params.get('chapterStyle',''))
@@ -63,10 +78,10 @@ def install_chapters(full, params, artwork):
                 textbox_style=' style="layout-flow:vertical-ideographic"' if vertical else ""
                 alignment="left" if vertical else "right"
                 paragraph_border=""
+                text_underline=""
                 if underline and float(params.get('chapterRulePt',book.CHAPTER_RULE_PT)) > 0:
-                    weight=max(2,round(float(params.get('chapterRulePt',book.CHAPTER_RULE_PT))*8))
                     rule_color=str(params.get('ruleColor','#000000')).lstrip('#')
-                    paragraph_border=f'<w:pBdr><w:bottom w:val="single" w:sz="{weight}" w:space="5" w:color="{rule_color}"/></w:pBdr>'
+                    text_underline=f'<w:u w:val="single" w:color="{rule_color}"/>'
                     textbox_style=' style="mso-fit-shape-to-text:t"'
                 lines=[]
                 for line in str(text).split('\n'):
@@ -75,7 +90,7 @@ def install_chapters(full, params, artwork):
                     if preserve_spaces:
                         line=line.replace(" ", "\u00a0").replace("\t", "\u00a0")
                     character_spacing=f'<w:spacing w:val="{round(letter_spacing*20)}"/>'
-                    lines.append(f'<w:p><w:pPr><w:jc w:val="{alignment}"/><w:spacing w:before="0" w:after="0" w:line="{round(size*1.6*20)}" w:lineRule="atLeast"/><w:snapToGrid w:val="0"/><w:kinsoku w:val="1"/><w:widowControl w:val="1"/>{paragraph_border}{direction}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font or book.F_CHAPTER_TITLE,quote=True)}"/><w:color w:val="{color.lstrip("#")}"/><w:sz w:val="{round(size*2)}"/>{character_spacing}</w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>')
+                    lines.append(f'<w:p><w:pPr><w:jc w:val="{alignment}"/><w:spacing w:before="0" w:after="0" w:line="{round(size*1.6*20)}" w:lineRule="atLeast"/><w:snapToGrid w:val="0"/><w:kinsoku w:val="1"/><w:widowControl w:val="1"/>{paragraph_border}{direction}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="{html.escape(font or book.F_CHAPTER_TITLE,quote=True)}"/><w:color w:val="{color.lstrip("#")}"/><w:sz w:val="{round(size*2)}"/>{text_underline}{character_spacing}</w:rPr><w:t xml:space="preserve">{html.escape(line)}</w:t></w:r></w:p>')
                 xml+=f'<v:textbox{textbox_style} inset="0,0,0,0"><w:txbxContent>{"".join(lines)}</w:txbxContent></v:textbox>'
             xml+='</v:rect></w:pict>'
             paragraph.add_run()._r.append(parse_xml(xml))
@@ -86,10 +101,9 @@ def install_chapters(full, params, artwork):
             size=params.get('chapter2TitleSize',18)
             shape(W*.46,H*params.get('chapter2Top',40)/100,size*1.7,H*.52,title,size=size,color=params.get('bookColor','#DEB887'),vertical=True,fill='#FFFFFF',preserve_spaces=True,letter_spacing=3)
         else:
-            match=re.match(r'^(第[一二三四五六七八九十百零〇两\d]+[章篇部卷])[\s　:：、.．—-]*(.*)$',title)
-            number=match[1] if match else f'第{ordinal[0]}章'
-            name=match[2] if match and match[2] else title
-            shape(W*.36,H*.20,W*.46,H*.08,number,font=book.F_CHAPTER_NUMBER,size=params.get(prefix+'NumberSize',21),color=params.get(prefix+'NumberColor','#20251c'))
+            number,name=split_chapter_heading(title)
+            if number:
+                shape(W*.36,H*.20,W*.46,H*.08,number,font=book.F_CHAPTER_NUMBER,size=params.get(prefix+'NumberSize',21),color=params.get(prefix+'NumberColor','#20251c'))
             title_size=params.get(prefix+'TitleSize',21)
             shape(W*.24,H*.29,W*.58,title_size*1.6+12,name,font=book.F_CHAPTER_TITLE,size=title_size,color=params.get(prefix+'TitleColor','#20251c'),underline=True)
             if artwork:shape(W*.70,H*.43,W*.13,H*.09,image=artwork[0])
