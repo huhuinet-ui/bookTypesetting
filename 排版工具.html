@@ -253,6 +253,7 @@ const GROUPS = [
    {k:"ruleW",l:"下划线宽",t:"num",d:2.54,u:"cm",s:0.1,min:0,max:20},
    {k:"ruleColor",l:"下划线色",t:"color",d:"#000000"},
    {k:"rulePt",l:"下划线粗细",t:"num",d:0.5,u:"pt",s:0.1,min:0,max:5},
+   {k:"decoOn",l:"显示文章标题旁矩形装饰",t:"bool",d:true},
    {k:"decoW",l:"装饰矩形宽",t:"num",d:34.02,u:"pt",s:1,min:0,max:200},
    {k:"decoH",l:"装饰矩形高",t:"num",d:72.57,u:"pt",s:1,min:0,max:300},
    {k:"decoX",l:"矩形距外边缘（负值伸入出血）",t:"num",d:-8.5,u:"pt",s:0.5,min:-100,max:100},
@@ -1473,6 +1474,7 @@ function decoratePage(pg, i, bodyStart, tocIndex=-1){
   }
 }
 function addDeco(sheet, isRight){
+  if(P.decoOn===false)return;
   const pageWpt = P.pageW*72/25.4;
   let xPt = isRight ? (pageWpt - P.decoX - P.decoW) : P.decoX;
   const off = printInset()*72/25.4;

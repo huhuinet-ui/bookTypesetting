@@ -17,22 +17,32 @@
     const button=document.getElementById('convertWord');button.disabled=true;
     status.textContent='正在转换并提取图片，请稍候…';report.textContent='';download.hidden=true;
     if(downloadURL){URL.revokeObjectURL(downloadURL);downloadURL=null;}
+    let stage='连接本地服务';
     try{
-      if(file.size>150*1024*1024)throw new Error('文件过大，请使用 150 MB 以内的 Word 文档。');
+      if(file.size>1024*1024*1024)throw new Error('文件过大，请使用 1 GB 以内的 Word 文档。');
       const session=await fetch('/api/session');if(!session.ok)throw new Error('本地服务未就绪');
-      const {token}=await session.json();
-      const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('读取文件失败'));reader.readAsDataURL(file);});
-      const response=await fetch('/api/convert-word',{method:'POST',headers:{'Content-Type':'application/json','X-Export-Token':token},body:JSON.stringify({name:file.name,data,bracketSubtitle:document.getElementById('bracketSubtitle').checked})});
+      const {token,wordBinaryUpload,wordFileResults}=await session.json();
+      if(!wordBinaryUpload || !wordFileResults)throw new Error('本地服务仍是旧版本。请关闭原启动窗口，重新双击“启动排版工具.bat”，使用新打开的页面重试。');
+      stage='上传或转换 Word';
+      status.textContent='正在上传并转换 Word，请稍候…';
+      const response=await fetch('/api/convert-word',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Export-Token':token,'X-Word-Name':encodeURIComponent(file.name),'X-Word-Results':'files','X-Bracket-Subtitle':String(document.getElementById('bracketSubtitle').checked)},body:file});
       if(!response.ok)throw new Error(await response.text());
-      const result=await response.json(),files=result.files.map(item=>{
-        const f=new File([decode(item.data)],item.path.split('/').pop(),{type:item.path.endsWith('.md')?'text/markdown':'application/octet-stream'});
-        Object.defineProperty(f,'webkitRelativePath',{value:'转换书稿/'+item.path});return f;
-      });
-      downloadURL=URL.createObjectURL(new Blob([decode(result.archive)],{type:'application/zip'}));
-      download.href=downloadURL;download.download=file.name.replace(/\.docx$/i,'')+'_Markdown.zip';download.hidden=false;
+      stage='接收转换结果';
+      status.textContent='转换完成，正在接收文字和图片…';
+      const result=await response.json(),files=[];
+      download.href=result.archiveUrl;download.download=file.name.replace(/\.docx$/i,'')+'_Markdown.zip';download.hidden=false;
+      for(const [index,item] of result.files.entries()){
+        status.textContent=`正在接收文字和图片 ${index+1}/${result.files.length}…`;
+        const asset=await fetch(item.url);
+        if(!asset.ok)throw new Error('转换文件读取失败，请重新转换：'+item.path);
+        const f=new File([await asset.blob()],item.path.split('/').pop(),{type:item.path.endsWith('.md')?'text/markdown':'application/octet-stream'});
+        Object.defineProperty(f,'webkitRelativePath',{value:'转换书稿/'+item.path});files.push(f);
+      }
       report.textContent=result.report;loadFolder(files);
       status.textContent='转换完成，已载入书稿。可关闭窗口查看预览，或下载 ZIP 保存 Markdown 与图片。';
-    }catch(error){status.textContent='转换失败：'+error.message;}
+    }catch(error){
+      status.textContent='转换失败：'+(error instanceof TypeError && /fetch|network|load failed/i.test(error.message)?stage+'时连接中断。请检查本地启动窗口是否仍在运行，并查看窗口中的错误信息；重启后请使用新打开的页面，旧页面的端口可能已失效。':error.message);
+    }
     finally{button.disabled=false;}
   });
 })();

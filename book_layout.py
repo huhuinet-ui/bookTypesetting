@@ -104,6 +104,7 @@ RULE_W, RULE_COLOR, RULE_PT = 2.54, "000000", 0.5
 TITLE_BODY_GAP_LINES = 3
 # 标题（含横线、作者名）到正文之间空几行：0=紧挨着，几就是空几行。
 DECO_W, DECO_H = 34.02, 72.57
+DECO_ON = True  # 是否展示文章标题旁的矩形装饰
 # 外侧装饰矩形约 12 × 25.6 mm，填充色为书籍主色调。
 DECO_X = -8.5
 # 距成品外边缘 -3 mm：伸入出血区。右页在右、左页在左。
@@ -1221,7 +1222,8 @@ def build_article(doc, art, first, recto=True, anchor=None):
     R(pt, art["title"], cn=F_TITLE, size=TITLE_SIZE)
     add_anchor(pt, anchor)   # 非打印书签用于整本书的最终页码校验
 
-    add_deco_rect(pt, deco_x(recto), DECO_TOP, DECO_W, DECO_H, str(BOOK_COLOR))
+    if DECO_ON:
+        add_deco_rect(pt, deco_x(recto), DECO_TOP, DECO_W, DECO_H, str(BOOK_COLOR))
 
     # 有作者才画标题下划线和作者名；没有作者就只留文章标题
     if art["author"]:

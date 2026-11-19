@@ -37,17 +37,27 @@ async function exportNativeWord(){
       }finally{URL.revokeObjectURL(url);}
     }
     const session=await fetch('/api/session');if(!session.ok)throw new Error('本地服务未就绪');
-    const {token}=await session.json(),files=[];
-    const encode=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('文件读取失败：'+(file.name||'书稿或图片')+'。请重新导入书稿文件夹后再导出。'));reader.readAsDataURL(file);});
+    const {token,wordBinaryExport}=await session.json(),files=[];
+    if(!wordBinaryExport)throw new Error('本地服务仍是旧版本，请关闭原启动窗口，重新运行启动器，并使用新打开的页面重试。');
+    const uploadId=crypto.randomUUID();
+    const upload=async(path,file)=>{
+      if(!file)throw new Error('文件读取失败：'+path+'。请重新导入书稿文件夹。');
+      status.textContent=`正在上传 Word 排版素材 ${files.length+1}：${path}`;
+      const index=files.length;
+      const response=await fetch('/api/export-file',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Export-Token':token,'X-Upload-Id':uploadId,'X-File-Index':String(index)},body:file});
+      if(!response.ok)throw new Error(await response.text());
+      files.push({path,index});
+    };
     // Upload only the selected manuscript and images that it actually references.
-    files.push({path:markdownRelPath,data:await encode(markdownSnapshot || folderFiles.get(markdownRelPath))});
+    await upload(markdownRelPath,markdownSnapshot || folderFiles.get(markdownRelPath));
     const uploaded=new Set([markdownRelPath]);
     for(const path of collectImgPaths(parsedData)){
       const file=resolveImgPath(path);if(!file)throw new Error('找不到插图：'+path+'。请将图片放入导入的书稿文件夹。');
       const rel=(file.webkitRelativePath||file.name).replace(/\\/g,'/');
-      if(!uploaded.has(rel)){files.push({path:rel,data:await encode(imgInfo.get(path)?.sourceBlob || file)});uploaded.add(rel);}
+      if(!uploaded.has(rel)){await upload(rel,imgInfo.get(path)?.sourceBlob || file);uploaded.add(rel);}
     }
-    const response=await fetch('/api/export-word',{method:'POST',headers:{'Content-Type':'application/json','X-Export-Token':token},body:JSON.stringify({source:markdownRelPath,name:BOOK_NAME,params:P,files,chapterArtwork})});
+    status.textContent='素材上传完成，正在调用本机 Word 排版并计算目录页码…';
+    const response=await fetch('/api/export-word',{method:'POST',headers:{'Content-Type':'application/json','X-Export-Token':token},body:JSON.stringify({source:markdownRelPath,name:BOOK_NAME,params:P,files,chapterArtwork,uploadId})});
     if(!response.ok)throw new Error(await response.text());
     const blob=await response.blob();
     cachedWord={book:parsedData,source:sourceFile,key:paramsKey,blob};
