@@ -93,6 +93,42 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 [hidden] { display:none!important; }
 @media(max-width:900px) { #toolbar { padding:12px; gap:8px; } #toolbar .hint { display:none; } #layout { height:calc(100dvh - 120px); } #panel { width:300px; min-width:300px; } }
 @media(max-width:620px) { #layout { flex-direction:column; height:auto; } #panel { width:100%; min-width:0; max-height:45vh; border-bottom:1px solid var(--line); } #preview { min-height:55vh; } #empty { margin:12px auto; padding:24px; } #srcInfo { max-width:150px; } #toolbar h1 { width:100%; } }
+/* Header height follows its contents; the workspace fills the remaining space. */
+body { display:flex; flex-direction:column; height:100dvh; overflow:hidden; }
+#toolbar { display:block; position:relative; flex:0 0 auto; padding:12px 20px; }
+.toolbar-heading { display:flex; align-items:center; gap:16px; min-width:0; margin-bottom:10px; }
+#toolbar h1 { flex:0 0 auto; margin:0; font-size:17px; width:auto; }
+#srcInfo { flex:1; min-width:0; max-width:none; }
+#zoomGroup { flex:0 0 auto; margin-left:auto; }
+.toolbar-actions { display:grid; grid-template-columns:1fr 1fr 1.45fr; gap:10px; }
+.toolbar-group { display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-width:0; padding:9px 12px; background:#f7f9f7; border:1px solid var(--line); border-radius:10px; }
+.toolbar-group-label { flex:0 0 100%; color:#718278; font-size:11px; }
+#toolbar button { white-space:nowrap; flex-shrink:0; min-height:34px; padding:6px 12px; }
+#toolbar select { min-width:0; max-width:100%; min-height:34px; border:1px solid var(--line); border-radius:7px; background:white; color:#556a5d; padding:4px 6px; }
+#toolbar .toolbar-export { background:#eef5f1; }
+#toolbar .toolbar-export select { flex:1 1 160px; }
+#toolbar .toolbar-export button { flex:1 0 auto; }
+#zoomGroup button { min-height:28px; padding:2px 8px; }
+#layout { flex:1 1 0; min-height:0; height:auto; overflow:hidden; }
+#preview { min-width:0; }
+@media(max-width:1100px) {
+  .toolbar-actions { grid-template-columns:1fr 1fr; }
+  .toolbar-export { grid-column:1 / -1; }
+  .toolbar-export .toolbar-group-label { flex-basis:auto; }
+}
+@media(max-width:620px) {
+  #toolbar { padding:10px; max-height:48dvh; overflow-y:auto; }
+  .toolbar-heading { flex-wrap:wrap; gap:8px; }
+  #toolbar h1 { font-size:16px; }
+  #srcInfo { order:3; flex-basis:100%; max-width:none; }
+  .toolbar-actions { grid-template-columns:minmax(0,1fr); gap:6px; }
+  .toolbar-group { padding:8px; }
+  .toolbar-group-label { flex-basis:auto; }
+  #toolbar button { padding:6px 9px; }
+  #layout { overflow:auto; }
+  #panel { flex:0 0 auto; max-height:40dvh; }
+  #preview { flex:1 0 auto; min-height:55dvh; }
+}
 </style>
 <style media="print" data-pagedjs-ignore>
   #toolbar, #panel, #statusBar, #empty { display:none !important; }
@@ -106,25 +142,37 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 </head>
 <body>
 <div id="toolbar">
+  <div class="toolbar-heading">
   <h1>图书排版工具</h1>
-  <button id="pickFolder">1 · 导入书稿</button>
-  <button id="importWord" type="button">Word 转 Markdown</button>
   <span id="srcInfo">未选择文件</span>
-  <span class="toolbar-divider" aria-hidden="true"></span>
-  <select id="pdfQuality" aria-label="PDF 导出质量" title="快速模式生成更快、文件更小；印刷模式保留 300 dpi 无损图像"><option value="fast">PDF：快速 · 150 dpi</option><option value="print">PDF：印刷 · 300 dpi 无损</option></select>
-  <button id="exportPdf" class="primary" disabled title="导入书稿并完成预览后即可导出">3 · 导出 PDF</button>
-  <button id="exportWord" disabled title="通过本地 Python 和 Microsoft Word 导出；章节文字可编辑，装饰素材单独嵌入">导出完整 Word</button>
-  <span class="hint">Word 使用本地排版引擎 · PDF 使用当前预览</span>
-  <span class="hint" hidden>直接下载 PDF · 300 dpi（图像型）</span>
-  <span style="flex:1"></span>
-  <div id="zoomGroup">
+  <div id="zoomGroup" aria-label="预览缩放">
     缩放 <button id="zoomOut">−</button><span id="zoomVal">100%</span><button id="zoomIn">+</button>
+  </div>
+  </div>
+  <div class="toolbar-actions">
+  <div class="toolbar-group" role="group" aria-label="书稿导入">
+  <span class="toolbar-group-label">1 · 书稿</span>
+  <button id="pickFolder">导入书稿</button>
+  <button id="importWord" type="button">Word 转 Markdown</button>
+  </div>
+  <div class="toolbar-group" role="group" aria-label="排版工程">
+  <span class="toolbar-group-label">2 · 工程设置</span>
+  <button id="openProject" type="button" title="恢复 JSON 工程中的排版设置，再导入原书稿文件夹">导入排版工程</button>
+  <button id="saveProject" type="button" title="将当前全部排版设置下载为 JSON 文件">保存排版工程</button>
+  </div>
+  <div class="toolbar-group toolbar-export" role="group" aria-label="文档导出">
+  <span class="toolbar-group-label">3 · 导出文档</span>
+  <button id="exportWord" class="primary" disabled title="通过本地 Python 和 Microsoft Word 导出；章节文字可编辑，装饰素材单独嵌入">导出完整 Word</button>
+  <button id="exportPdf" class="primary" disabled title="导入书稿并完成预览后即可导出">导出 PDF</button>
+  <select id="pdfQuality" aria-label="PDF 导出质量" title="仅影响 PDF：快速模式生成更快、文件更小；印刷模式保留 300 dpi 无损图像"><option value="fast">PDF：快速 · 150 dpi</option><option value="print">PDF：印刷 · 300 dpi 无损</option></select>
+  </div>
   </div>
 </div>
 <div id="layout">
   <aside id="panel">
     <h2 class="panel-heading">2 · 调整版式</h2>
     <p class="panel-note">先设置纸张和字体，再按书页顺序调整内容，最后检查页码与印刷。修改后自动更新预览。</p>
+    <p class="panel-note" id="projectStatus" role="status" aria-live="polite">排版完成或修改设置后，点击「保存排版工程」。JSON 保存设置，MD 和图片请保留在原书稿文件夹中。</p>
     <input id="settingSearch" type="search" placeholder="搜索参数，如：字号、边距、目录" aria-label="搜索排版参数">
     <nav id="settingsNav" aria-label="设置分类"></nav>
     <div class="panel-actions"><button id="expandSettings" type="button">全部展开</button><button id="collapseSettings" type="button">全部收起</button></div>
@@ -147,6 +195,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 </dialog>
 <template id="bookContent"></template>
 <input type="file" id="fileInput" webkitdirectory multiple style="display:none">
+<input type="file" id="projectInput" accept=".json,application/json" style="display:none">
 <script>
 window.PagedConfig = { auto:false };
 </script>
@@ -221,7 +270,7 @@ const GROUPS = [
    {k:"markTargetColor",l:"加粗文字转换目标颜色",t:"color",d:"#DEB887"},
    {k:"widowControl",l:"孤行控制",t:"bool",d:true},
    {k:"keepTogether",l:"段中不分页",t:"bool",d:false},
-   {k:"subtitleBold",l:"小标题加粗",t:"bool",d:1},
+   {k:"subtitleBold",l:"小标题加粗",t:"bool",d:true},
    {k:"subtitleColor",l:"小标题文字颜色",t:"color",d:"#000000"},
    {k:"subtitleBgOn",l:"小标题加底色",t:"bool",d:false},
    {k:"subtitleBgColor",l:"小标题底色",t:"color",d:"#FFF2CC"},
@@ -699,7 +748,7 @@ function loadFolder(fileList){
   }
   if(!mds.length){ alert("该文件夹里没有 .md 文件"); return; }
   mds.sort();
-  const mdRel = mds[0];
+  const mdRel = mds.find(path=>path.split("/").pop()===projectMarkdownName) || mds[0];
   markdownRelPath = mdRel;
   const mdFile = folderFiles.get(mdRel);
   BOOK_NAME = mdRel.split("/").pop().replace(/\.md$/i,"");
@@ -707,7 +756,8 @@ function loadFolder(fileList){
   reader.onload = async () => {
     markdownSnapshot = new Blob([String(reader.result)], {type:"text/markdown;charset=utf-8"});
     parsedData = parseBook(String(reader.result));
-    document.getElementById("srcInfo").textContent = mdRel + "（共 " + mds.length + " 个 .md，用第一个）";
+    document.getElementById("srcInfo").textContent = mdRel + "（共 " + mds.length + " 个 .md）";
+    if(projectMarkdownName && mdRel.split("/").pop()!==projectMarkdownName)document.getElementById("projectStatus").textContent="当前书稿与工程记录的文件名不同；工程设置仍已保留。原书稿："+projectMarkdownName;
     document.getElementById("exportPdf").disabled = false;
     document.getElementById("exportWord").disabled = false;
     await renderAll();
@@ -1644,6 +1694,8 @@ applyZoom();
 </script>
 <script src="word-import.js" data-pagedjs-ignore></script>
 <script src="word-export.js" data-pagedjs-ignore></script>
+<script src="project-format.js" data-pagedjs-ignore></script>
+<script src="project-settings.js" data-pagedjs-ignore></script>
 </body>
 </html>
 

@@ -83,7 +83,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, json.dumps({'colors': read_theme_colors()}).encode(), 'application/json')
         if path == '/api/session':
             return self.reply(200, json.dumps({'token': TOKEN}).encode(), 'application/json')
-        allowed = {'/': '排版工具.html', '/排版工具.html': '排版工具.html', '/word-export.js': 'word-export.js', '/word-import.js': 'word-import.js'}
+        allowed = {'/': '排版工具.html', '/排版工具.html': '排版工具.html', '/word-export.js': 'word-export.js', '/word-import.js': 'word-import.js', '/project-format.js': 'project-format.js', '/project-settings.js': 'project-settings.js'}
         if path.startswith('/vendor/') and Path(path).name in {'html-to-image-1.11.13.js', 'pdf-lib-1.17.1.min.js'}:
             name = path.lstrip('/')
         else:
