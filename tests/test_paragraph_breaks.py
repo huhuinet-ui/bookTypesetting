@@ -1,11 +1,28 @@
 import io
 import unittest
+from unittest.mock import patch
 from docx import Document
 from docx.oxml.ns import qn
 import book_layout as book
 
 
 class ParagraphBreakTests(unittest.TestCase):
+    def test_legacy_each_line_mode_retains_explicit_manual_breaks(self):
+        with patch.object(book, 'BODY_EACH_LINE', True):
+            self.assertEqual(book.classify(['第一段', '第二段', '', '上行\\', '下行']),
+                             [('p', '第一段'), ('p', '第二段'), ('p', '上行\n下行')])
+
+    def test_word_manual_breaks_do_not_expand_spacing(self):
+        doc = Document()
+        para = doc.add_paragraph()
+        book.set_para(para, book.JUSTIFY)
+        book.add_body_para(para, '上行\n下行')
+        self.assertEqual(para.alignment, book.JUSTIFY)
+        flags = list(doc.settings.element.iter(qn('w:doNotExpandShiftReturn')))
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0].get(qn('w:val')), '1')
+        self.assertEqual(para.text, '上行\n下行')
+
     def test_line_break_vs_blank_line(self):
         self.assertEqual(book.classify(['第一行', '第二行', '', '下一段']),
                          [('p', '第一行\n第二行'), ('p', '下一段')])

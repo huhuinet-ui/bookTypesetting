@@ -105,6 +105,7 @@ TITLE_BODY_GAP_LINES = 3
 # 标题（含横线、作者名）到正文之间空几行：0=紧挨着，几就是空几行。
 DECO_W, DECO_H = 34.02, 72.57
 DECO_ON = True  # 是否展示文章标题旁的矩形装饰
+BODY_EACH_LINE = False  # 旧 MD 可选择将每个物理行视为独立段落
 # 外侧装饰矩形约 12 × 25.6 mm，填充色为书籍主色调。
 DECO_X = -8.5
 # 距成品外边缘 -3 mm：伸入出血区。右页在右、左页在左。
@@ -316,6 +317,15 @@ def add_body_para(p, text, cn=None, alt_cn=None, size=None, alt_open=False):
        {{文字}}  → 改用特殊字体 alt_cn（默认取 F_BODY_ALT）
     alt_open=True 表示进入本段时特殊字体已开启（供连续多段的块标记续接）。
     返回段末的特殊字体开关状态，供下一段继承。"""
+    # Prevent Word from expanding character spacing before Shift+Enter.
+    settings = p.part.document.settings.element
+    compat = settings.find(qn('w:compat'))
+    if compat is None:
+        compat = OxmlElement('w:compat'); settings.append(compat)
+    flag = compat.find(qn('w:doNotExpandShiftReturn'))
+    if flag is None:
+        flag = OxmlElement('w:doNotExpandShiftReturn'); compat.append(flag)
+    flag.set(qn('w:val'), '1')
     if cn is None: cn = F_BODY
     if size is None: size = BODY_SIZE
     if alt_cn is None:
@@ -863,7 +873,9 @@ def classify(lines, base_dir=None, poem=False):
 
     def append_body(kind, text, index):
         nonlocal last_body_line
-        if index == last_body_line + 1 and items and items[-1][0] == kind:
+        text = re.sub(r'\\$', '', text)
+        if (index == last_body_line + 1 and (not BODY_EACH_LINE or ls[index-1].endswith('\\'))
+                and items and items[-1][0] == kind):
             items[-1] = (kind, items[-1][1] + "\n" + text)
         else:
             items.append((kind, text))

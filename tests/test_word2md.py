@@ -43,7 +43,14 @@ class Word2MarkdownBoldTests(unittest.TestCase):
         para.add_run("  加粗一\n加粗二 \t").bold = True
         para.add_run("后文")
         text, _ = self.convert_document(doc)
-        self.assertEqual(text, "前文  **加粗一**\n**加粗二** \t后文\n")
+        self.assertEqual(text, "前文  **加粗一**\\\n**加粗二** \t后文\n")
+
+    def test_enter_and_shift_enter_remain_distinct(self):
+        doc = Document()
+        doc.add_paragraph('第一段')
+        doc.add_paragraph('第二段上行\n第二段下行')
+        text, _ = self.convert_document(doc)
+        self.assertEqual(text, '第一段\n\n第二段上行\\\n第二段下行\n')
 
     def test_inherited_character_style_and_explicit_off(self):
         doc = Document()

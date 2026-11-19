@@ -263,6 +263,7 @@ const GROUPS = [
    {k:"authorSize",l:"作者字号",t:"num",d:13,u:"pt",s:0.5,min:6,max:40},
  ]},
  { title:"正文", items:[
+   {k:"bodyEachLine",l:"旧 MD：每行作为独立段落（明确的段内换行除外）",t:"bool",d:false},
    {k:"bodySize",l:"正文字号（文章／前言／后记共用）",t:"num",d:10.5,u:"pt",s:0.5,min:5,max:20},
    {k:"bodyIndent",l:"首行缩进",t:"num",d:1.5,u:"字",s:0.1,min:0,max:10},
    {k:"bodyAfter",l:"段后间距",t:"num",d:19.5,u:"pt",s:0.5,min:0,max:60},
@@ -593,7 +594,8 @@ function classify(lines, poem){
   const items = []; const m = ls.length; let k = 0; let altBlock=false;
   let lastBodyLine=-2;
   const appendBody=(kind,text,index)=>{
-    if(index===lastBodyLine+1 && items.length && items[items.length-1][0]===kind)items[items.length-1][1]+="\n"+text;
+    text=text.replace(/\\$/,"");
+    if(index===lastBodyLine+1 && (!P.bodyEachLine || /\\$/.test(ls[index-1])) && items.length && items[items.length-1][0]===kind)items[items.length-1][1]+="\n"+text;
     else items.push([kind,text]);
     lastBodyLine=index;
   };
@@ -962,7 +964,7 @@ function renderInline(text, forceAlt=false){
   return inner;
 }
 function renderPara(text, forceAlt=false){
-  return `<div class="para">${renderInline(text,forceAlt)}</div>`;
+  return `<div class="para" style="text-align-last:left">${renderInline(text,forceAlt)}</div>`;
 }
 function normalizeCaption(text){
   return String(text).replace(/[\u200b\u200c\u200d\u2060\ufeff]/g,"").replace(/[\t\u00a0\u3000 ]+/g," ").trim();

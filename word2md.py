@@ -170,7 +170,9 @@ def paragraph_markdown(para):
                 for line in text.split("\n")
             )
         parts.append(text)
-    return "".join(parts).strip()
+    # Preserve Word's manual line breaks explicitly; paragraphs are joined
+    # with blank lines by convert(), independently of this marker.
+    return "".join(parts).strip().replace("\n", "\\\n")
 
 
 def extracted_image(blip, blob, ext):
