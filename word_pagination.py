@@ -1,5 +1,6 @@
 """Read final document page numbers using nonprinting bookmarks and Office."""
 import json
+import gc
 import os
 from pathlib import Path
 import subprocess
@@ -95,8 +96,14 @@ def save_paginated(build, output, inspect=inspect_document, max_passes=6):
     with tempfile.TemporaryDirectory(prefix='book-final-', dir=str(output.parent)) as directory:
         candidate = Path(directory) / 'book.docx'
         for attempt in range(max_passes):
+            print('分页第 {} 轮：组装书稿和图片'.format(attempt+1), flush=True)
             document, anchors = build(page_map, pad)
+            print('分页第 {} 轮：保存 Word 文件'.format(attempt+1), flush=True)
             document.save(str(candidate))
+            # Release embedded image blobs before Office opens the same large book.
+            del document
+            gc.collect()
+            print('分页第 {} 轮：调用 Office 校验页码'.format(attempt+1), flush=True)
             result = inspect(candidate, [name for name, _ in anchors], engine=engine)
             engine = result['engine']
             actual = measured_pages(result, anchors)

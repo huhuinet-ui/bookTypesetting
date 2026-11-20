@@ -36,6 +36,8 @@
 -----------------------------------------------------------
 """
 import io, os, re, sys, math, html
+import contextlib
+import tempfile
 if (getattr(sys.stdout, "encoding", "") or "").lower() != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
@@ -712,7 +714,40 @@ def caption_no_orphans(text):
     return re.sub(r"[\t\u00a0\u3000 ]+", " ", text).strip()
 
 
+_WORD_IMAGE_CACHE = None
+
+
+@contextlib.contextmanager
+def image_source_cache():
+    """Reuse normalized images across pagination passes without holding pixels in RAM."""
+    global _WORD_IMAGE_CACHE
+    previous = _WORD_IMAGE_CACHE
+    with tempfile.TemporaryDirectory(prefix='word-images-') as directory:
+        _WORD_IMAGE_CACHE = ({}, directory)
+        try:
+            yield
+        finally:
+            _WORD_IMAGE_CACHE = previous
+
+
 def word_image_source(path):
+    if _WORD_IMAGE_CACHE is None:
+        return _word_image_source(path)
+    cache, directory = _WORD_IMAGE_CACHE
+    stat = os.stat(path)
+    key = (os.path.abspath(path), stat.st_size, stat.st_mtime_ns)
+    if key not in cache:
+        source = _word_image_source(path)
+        if hasattr(source, 'getvalue'):
+            target = os.path.join(directory, str(len(cache)) + '.image')
+            with open(target, 'wb') as stream:
+                stream.write(source.getvalue())
+            source = target
+        cache[key] = source
+    return cache[key]
+
+
+def _word_image_source(path):
     """Keep supported images intact; normalize browser-only formats in memory."""
     from docx.image.image import Image as WordImage
     try:
@@ -724,10 +759,14 @@ def word_image_source(path):
         try:
             from PIL import Image, ImageOps
             with Image.open(path) as image:
+                jpeg = image.format == 'JPEG'
                 image = ImageOps.exif_transpose(image)
                 image = image.convert('RGBA' if 'A' in image.getbands() or 'transparency' in image.info else 'RGB')
                 output = io.BytesIO()
-                image.save(output, format='PNG', dpi=(96, 96))
+                if jpeg and image.mode == 'RGB':
+                    image.save(output, format='JPEG', quality=95, dpi=(96, 96))
+                else:
+                    image.save(output, format='PNG', dpi=(96, 96))
             output.seek(0)
             WordImage.from_file(output)
             output.seek(0)

@@ -1,5 +1,25 @@
 "use strict";
 let cachedWord=null;
+async function uploadWordAsset(path,file,headers){
+  const send=body=>fetch('/api/export-file',{method:'POST',headers,body});
+  try{return await send(file);}
+  catch(error){
+    if(!(error instanceof TypeError))throw error;
+    // A disk-backed File may become unreadable after editing or replacing it.
+    // Check the service before retrying with an independent in-memory snapshot.
+    let health;
+    try{health=await fetch('/api/session',{cache:'no-store'});}
+    catch(_){throw new Error('上传“'+path+'”时与本地服务连接中断。请保留启动窗口；若已重启服务，请使用新打开的页面重新导入书稿。');}
+    if(!health.ok)throw new Error('本地服务未就绪，请重新启动排版工具。');
+    const session=await health.json();
+    if(session.token!==headers['X-Export-Token'])throw new Error('本地服务已重启，请使用新打开的页面重新导入书稿。');
+    let snapshot;
+    try{snapshot=new Blob([await file.arrayBuffer()],{type:file.type||'application/octet-stream'});}
+    catch(_){throw new Error('无法读取素材“'+path+'”。文件可能已被修改、移动或替换，请重新导入书稿文件夹后再导出。');}
+    try{return await send(snapshot);}
+    catch(_){throw new Error('素材“'+path+'”上传重试失败。请查看本地启动窗口中的错误信息，重新启动工具后再导出。');}
+  }
+}
 function downloadWordBlob(blob){
   const url=URL.createObjectURL(blob),link=document.createElement('a');
   link.href=url;link.download=(BOOK_NAME||'书稿').replace(/[\\/:*?"<>|]/g,'_')+'.docx';document.body.appendChild(link);link.click();link.remove();
@@ -44,7 +64,7 @@ async function exportNativeWord(){
       if(!file)throw new Error('文件读取失败：'+path+'。请重新导入书稿文件夹。');
       status.textContent=`正在上传 Word 排版素材 ${files.length+1}：${path}`;
       const index=files.length;
-      const response=await fetch('/api/export-file',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Export-Token':token,'X-Upload-Id':uploadId,'X-File-Index':String(index)},body:file});
+      const response=await uploadWordAsset(path,file,{'Content-Type':'application/octet-stream','X-Export-Token':token,'X-Upload-Id':uploadId,'X-File-Index':String(index)});
       if(!response.ok)throw new Error(await response.text());
       files.push({path,index});
     };

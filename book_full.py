@@ -238,8 +238,9 @@ def main():
     book.BOOK_NAME = BOOK_NAME
     data = book.parse_book()
     chapters = data["chapters"]
-    page_map, total_pages, pad, engine = save_paginated(
-        lambda pages, digits: build_document(data, pages, digits), OUT)
+    with book.image_source_cache():
+        page_map, total_pages, pad, engine = save_paginated(
+            lambda pages, digits: build_document(data, pages, digits), OUT)
     n_ch = sum(1 for c in chapters if c["title"] is not None)
     n_art = sum(len(c["articles"]) for c in chapters)
     print(f"已生成 {OUT}")

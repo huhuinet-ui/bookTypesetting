@@ -288,6 +288,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                     with output.open('rb') as stream:
                         shutil.copyfileobj(stream, self.wfile, 1024 * 1024)
+        except subprocess.TimeoutExpired as error:
+            progress = (error.stdout or b'').decode('utf-8', 'replace').strip().splitlines()
+            message = 'Word 导出超过 30 分钟，已停止本次任务。'
+            if progress:
+                message += '最后进度：' + progress[-1]
+            self.reply(400, message.encode('utf-8'), 'text/plain; charset=utf-8')
         except Exception as error:
             self.reply(400, str(error).encode('utf-8'), 'text/plain; charset=utf-8')
         finally:

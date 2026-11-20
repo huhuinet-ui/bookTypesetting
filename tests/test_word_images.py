@@ -2,6 +2,7 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from docx import Document
 from PIL import Image, features
 import book_layout as book
@@ -38,6 +39,30 @@ class WordImageCompatibilityTests(unittest.TestCase):
         path = self.root / 'native.png'
         Image.new('RGB', (20, 30)).save(str(path))
         self.assertEqual(book.word_image_source(str(path)), str(path))
+
+    def test_jpeg_without_jfif_stays_jpeg_and_is_reused_across_passes(self):
+        path = self.root / 'photo.jpg'
+        image = io.BytesIO()
+        Image.new('RGB', (120, 80), 'red').save(image, format='JPEG')
+        raw = image.getvalue()
+        self.assertEqual(raw[2:4], b'\xff\xe0')
+        # Camera JPEGs without JFIF/Exif headers are readable by Pillow but not docx.
+        length = int.from_bytes(raw[4:6], 'big')
+        path.write_bytes(raw[:2] + raw[4+length:])
+        before = path.read_bytes()
+        with patch.object(book, '_word_image_source', wraps=book._word_image_source) as normalize:
+            with book.image_source_cache():
+                source = book.word_image_source(str(path))
+                self.assertEqual(book.word_image_source(str(path)), source)
+                self.assertEqual(normalize.call_count, 1)
+                with Image.open(source) as result:
+                    self.assertEqual(result.format, 'JPEG')
+                    self.assertEqual(result.size, (120, 80))
+                doc = Document()
+                doc.add_paragraph().add_run().add_picture(source)
+                self.assertEqual(len(doc.inline_shapes), 1)
+            self.assertFalse(Path(source).exists())
+        self.assertEqual(path.read_bytes(), before)
 
     def test_corrupt_image_error_names_file(self):
         path = self.root / 'broken.jpg'

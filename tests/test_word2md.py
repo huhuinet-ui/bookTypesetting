@@ -128,12 +128,32 @@ class Word2MarkdownBoldTests(unittest.TestCase):
         self.assertNotIn("**加粗图注**", text)
         self.assertIn("后续正文。", text)
 
-    def test_legacy_short_bold_heading_guess_stays_plain(self):
+    def test_isolated_short_bold_body_is_not_a_heading(self):
         doc = Document()
         doc.add_paragraph().add_run("推测标题").bold = True
         doc.add_paragraph()
         text, _ = self.convert_document(doc)
-        self.assertEqual(text, "#### 推测标题\n")
+        self.assertEqual(text, "**推测标题**\n")
+
+    def test_growth_diary_bold_paragraphs_keep_body_semantics(self):
+        samples = [
+            '用打针来吓唬小朋友是有代价的，因为那一刻真的会来临。',
+            '我们脆弱的父子关系似乎只能靠巧克力饼干来维持了。',
+            '第一个原则是从来不骗他。',
+            '第二个原则是尽可能不要限制他的自由。',
+            '第三个原则：对他保持尊重。',
+            '（2）姥爷眼里的皮皮——2026.9.15 皮姥爷记述',
+        ]
+        doc = Document()
+        doc.add_heading('真正的文章标题', level=4)
+        for sample in samples:
+            doc.add_paragraph()
+            doc.add_paragraph().add_run(sample).bold = True
+            doc.add_paragraph()
+        text, _ = self.convert_document(doc)
+        self.assertEqual(text.count('#### '), 1)
+        for sample in samples:
+            self.assertIn('**' + sample + '**', text)
 
     def test_hyperlinks_keep_text_order_and_bold(self):
         doc = Document()

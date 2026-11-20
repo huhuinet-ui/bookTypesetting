@@ -11,7 +11,8 @@
 - 图片自动提取到「图/」子文件夹，生成 ![图注](图/imgN.png)
 - 图注：支持跳过图片后的空段落、同段说明及“图片说明：/图注：/图1：”等写法；下一段若为「图：xxx」「图1-1：xxx」或 Word 题注样式，自动取为图注
   （带编号的「图1-1：xxx」整行保留，含编号）
-- 兜底（样式丢失时）：加粗独立短段→文章标题；「数字.」开头独立短段→小节标题；
+- 普通正文的整段加粗保留为 **文字**，不凭加粗猜文章标题；
+- 兜底（样式丢失时）：「数字.」开头独立短段→小节标题；
   这些靠猜的行会列在最后的「需人工核对」清单里
 - 可选开关（默认关闭）：整段被【】包起来的行→去掉【】。既处理普通正文段（转成 ##### 小标题），
   也处理带标题样式的段（如「标题5」的【xxx】→ ##### xxx，只去括号、层级不变）。
@@ -284,14 +285,8 @@ def convert(src, out=None, bracket_subtitle=None):
                 i += 1
                 continue
 
-        # 兜底：样式丢失，靠「加粗独立短段」猜文章标题、「数字.开头独立短段」猜小节标题
-        visible_runs = [r for r in paragraph_runs(p) if r.text.strip()]
-        bold_all = bool(visible_runs) and all(r.bold for r in visible_runs)
-        if bold_all and len(text) <= 30 and _empty(paras, i - 1) and _empty(paras, i + 1):
-            lines.append(f"#### {clean_title(text)}")
-            suspicious.append(("文章标题(猜)", clean_title(text)))
-            i += 1
-            continue
+        # 加粗是正文强调，不据此推断文章边界；文章标题由 Word 标题样式决定。
+        # 兼容旧稿的「数字.开头独立短段」小节写法。
         if re.match(r"^\d{1,2}\.\s", text) and len(text) <= 30 and _empty(paras, i - 1):
             lines.append(f"##### {text}")
             suspicious.append(("小节标题(猜)", text))
