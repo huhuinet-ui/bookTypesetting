@@ -171,9 +171,12 @@ def paragraph_markdown(para):
                 for line in text.split("\n")
             )
         parts.append(text)
-    # Preserve Word's manual line breaks explicitly; paragraphs are joined
-    # with blank lines by convert(), independently of this marker.
-    return "".join(parts).strip().replace("\n", "\\\n")
+    # A single manual break stays inside a paragraph. Repeated manual breaks
+    # visually separate paragraphs in pasted manuscripts, so preserve that intent.
+    text = "".join(parts).strip()
+    tokens = re.split(r'(\n(?:[ \t]*\n)*)', text)
+    return ''.join('\n\n' if token.count('\n') >= 2 else '\\\n' if token.startswith('\n') else token
+                   for token in tokens)
 
 
 def extracted_image(blip, blob, ext):
@@ -268,7 +271,9 @@ def convert(src, out=None, bracket_subtitle=None):
                 bm = BRACKET_SUB_RE.match(t)
                 if bm:
                     t = bm.group(1).strip()
-            if level == 4 and any(t.startswith(key) for key in PREFACE_KEYS):
+            if level <= 4 and t.startswith('附录'):
+                lines.append(f"# {t}")
+            elif level == 4 and (any(t.startswith(key) for key in PREFACE_KEYS) or re.match(r'^(?:后记|跋)(?:[\s:：、—–-]|$)',t)):
                 if t.startswith("前沿"):
                     t = "前言" + t[len("前沿"):]
                 lines.append(f"# {t}")

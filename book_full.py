@@ -73,7 +73,7 @@ def add_toc_line(doc, text, page, size, bold=False, indent_pt=0, pad=None, keep_
     toc.R(p, num, size)
 
 
-def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
+def build_toc(doc, chapters, page_map, pad=None, preface_title=None, afterword=None, appendices=None, endmatter_order=None, endmatter_articles=None):
     """在文档里排目录页（横排）。前言/序言在目录之前独立展示，不加入目录。"""
     tp = doc.add_paragraph()
     tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -95,6 +95,10 @@ def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
         for a in ch["articles"]:
             entries.append((a["title"], page_map.get(a["title"], ""),
                             toc.ENTRY_SIZE, False, ARTICLE_INDENT_PT))
+    for afterword in (endmatter_order if endmatter_order is not None else ([afterword] if afterword else []) + (appendices or [])):
+        entries.append((afterword[0], page_map.get(afterword[1], ''), CHAPTER_TOC_SIZE, CHAPTER_TOC_BOLD, 0))
+        for article in (endmatter_articles or {}).get(afterword[1], []):
+            entries.append((article['title'],page_map.get(article['toc_key'],''),toc.ENTRY_SIZE,False,ARTICLE_INDENT_PT))
     last = len(entries) - 1
     for i, (text, page, size, bold, indent_pt) in enumerate(entries):
         # 只把「倒数第二行」与最后一行绑定同页：防止目录末页只剩一行（寡行）。
@@ -160,12 +164,12 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
                 book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
 
 
-def add_front_matter(doc, title, text):
+def add_front_matter(doc, title, text, anchor=None):
     """前言/后记页：单独成节、空页眉（暗码，不显示页码）。"""
     sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
     remove_page_number_start(sec._sectPr)
     book.clear_header(sec)
-    book.add_front_page(doc, title, text)
+    book.add_front_page(doc, title, text, anchor=anchor)
     return sec
 
 
@@ -214,13 +218,32 @@ def build_document(data, page_map, pad):
     else:
         toc_sec = sec1
 
-    build_toc(doc, chapters, page_map, pad=pad)
+    endmatter = book.endmatter_entries(data)
+    build_toc(doc, chapters, page_map, pad=pad, endmatter_order=[(item['title'], item['key']) for item in endmatter],
+              endmatter_articles={item['key']:item.get('articles',[]) for item in endmatter})
 
     sec2 = book.add_book_section(doc, WD_SECTION.ODD_PAGE)   # 正文第一节：从奇数页(右页)开始，保证正文页码奇偶=物理页奇偶，色块/标题镜像才和页眉一致
     build_body(doc, chapters, sec2, pad=pad, page_map=page_map, anchors=anchors)
 
-    if data["afterword"] is not None:  # 最后一篇文章后插后记页
-        add_front_matter(doc, data["afterword_title"], data["afterword"])
+    for item in endmatter:
+        token = 'zq{:04d}wz'.format(len(anchors))
+        anchors.append((token, item['key']))
+        articles = item.get('articles', [])
+        if not articles:
+            add_front_matter(doc, item['title'], item['text'], anchor=token)
+            continue
+        section = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
+        remove_page_number_start(section._sectPr)
+        book.setup_header(section, chapter=item['title'], pad=pad)
+        if item.get('intro'):
+            book.add_front_page(doc,item['title'],item['intro'],anchor=token)
+        else:
+            book.add_anchor(doc.add_paragraph(),token)
+        for index, article in enumerate(articles):
+            article_token='zq{:04d}wz'.format(len(anchors))
+            anchors.append((article_token,article['toc_key']))
+            book.build_article(doc,article,index==0 and not item.get('intro'),
+                               recto=page_map.get(article['toc_key'],1)%2==1,anchor=article_token)
 
     for sec in doc.sections:
         book.add_print_margin(sec)

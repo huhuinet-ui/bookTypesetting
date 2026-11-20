@@ -14,6 +14,41 @@ from word2md import convert, paragraph_markdown
 
 
 class Word2MarkdownBoldTests(unittest.TestCase):
+    def test_repeated_manual_breaks_become_indented_paragraphs(self):
+        doc=Document()
+        p=doc.add_paragraph('第一段正文。\n\n第二段正文。\n段内换行。\n \n')
+        p.add_run('第三段加粗。').bold=True
+        text,_=self.convert_document(doc)
+        self.assertEqual(text,'第一段正文。\n\n第二段正文。\\\n段内换行。\n\n**第三段加粗。**\n')
+        import book_layout as book
+        items=book.classify(text.splitlines())
+        self.assertEqual(items,[('p','第一段正文。'),('p','第二段正文。\n段内换行。'),('p','**第三段加粗。**')])
+        output=Document()
+        for _,value in items:
+            paragraph=output.add_paragraph()
+            book.set_para(paragraph,indent_chars=book.BODY_INDENT)
+            book.add_body_para(paragraph,value)
+        for paragraph in output.paragraphs:
+            self.assertEqual(paragraph.paragraph_format.first_line_indent.pt,book.BODY_SIZE*book.BODY_INDENT)
+
+    def test_afterword_heading_maps_to_front_matter(self):
+        doc=Document()
+        doc.add_heading('后记',level=4)
+        doc.add_paragraph('后记正文。')
+        text,_=self.convert_document(doc)
+        self.assertEqual(text,'# 后记\n\n后记正文。\n')
+
+    def test_appendix_heading_is_independent_from_chapters(self):
+        doc=Document()
+        doc.add_heading('附录一：年表',level=3)
+        doc.add_paragraph('资料正文。')
+        doc.add_heading('附录二：参考资料',level=4)
+        doc.add_paragraph('参考内容。')
+        text,_=self.convert_document(doc)
+        self.assertIn('# 附录一：年表\n',text)
+        self.assertIn('# 附录二：参考资料\n',text)
+        self.assertNotIn('### 附录',text)
+
     def convert_document(self, doc, **kwargs):
         # Save and reopen through the real converter, rather than only testing runs.
         work = Path(__file__).resolve().parents[1] / "tmp" / "word2md-tests"

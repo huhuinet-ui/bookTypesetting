@@ -265,7 +265,7 @@ const GROUPS = [
  { title:"正文", items:[
    {k:"bodyEachLine",l:"旧 MD：每行作为独立段落（明确的段内换行除外）",t:"bool",d:false},
    {k:"bodySize",l:"正文字号（文章／前言／后记共用）",t:"num",d:10.5,u:"pt",s:0.5,min:5,max:20},
-   {k:"bodyIndent",l:"首行缩进",t:"num",d:1.5,u:"字",s:0.1,min:0,max:10},
+   {k:"bodyIndent",l:"首行缩进",t:"num",d:2,u:"字",s:0.1,min:0,max:10},
    {k:"bodyAfter",l:"段后间距",t:"num",d:19.5,u:"pt",s:0.5,min:0,max:60},
    {k:"bodyLine",l:"行距",t:"num",d:19.5,u:"pt",s:0.5,min:5,max:60},
    {k:"markMode",l:"Markdown 加粗文字处理",t:"select",d:"改为目标颜色（取消加粗）",opts:["保留加粗","改为目标颜色（取消加粗）"]},
@@ -588,11 +588,20 @@ function normalizeBodyBold(lines){
     return (before?"**":"")+s+(marked?"**":"");
   });
 }
+function isSignatureDate(value){
+  let text=String(value).normalize('NFKC').trim().replace(/\\$/,'').trim();
+  for(const marker of ['**','*','{{']){
+    const end=marker==='{{'?'}}':marker;
+    if(text.startsWith(marker) && text.endsWith(end))text=text.slice(marker.length,-end.length).trim();
+  }
+  return /^(?:(?:写|记|作)?于\s*)?(?:(?:\d{2,4}|[〇零一二三四五六七八九]{4})\s*年\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*月(?:\s*(?:\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号])?|\d{4}\s*[-/.]\s*\d{1,2}(?:\s*[-/.]\s*\d{1,2})?)(?:\s*[，,]?\s*(?:写于|记于|作于|于)\s*[^。！？；\n]+)?\s*[。.]?$/.test(text);
+}
 function classify(lines, poem){
   if(poem) return classifyPoem(lines);
   const ls = normalizeBodyBold(lines.map(cleanLine));
   const items = []; const m = ls.length; let k = 0; let altBlock=false;
   let lastBodyLine=-2;
+  const appendSignature=value=>items.push(['signature',value.replace(/\\(?=\n|$)/g,'')]);
   const appendBody=(kind,text,index)=>{
     text=text.replace(/\\$/,"");
     if(index===lastBodyLine+1 && (!P.bodyEachLine || /\\$/.test(ls[index-1])) && items.length && items[items.length-1][0]===kind)items[items.length-1][1]+="\n"+text;
@@ -602,7 +611,7 @@ function classify(lines, poem){
   while(k < m){
     const s = ls[k];
     if(!s){ k++; continue; }
-    const isDate=value=>/^\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?\s*$/.test(value);
+    const isDate=isSignatureDate;
     let following=k+1;
     while(following<m && !ls[following])following++;
     const isName=value=>value.length>=1 && value.length<=20 && !/[。！？；：，、#*{}\[\]()]/.test(value);
@@ -610,12 +619,12 @@ function classify(lines, poem){
       let end=following+1;
       while(end<m && !ls[end])end++;
       if(following<m && isName(ls[following]) && (end===m || ls[end].startsWith('#'))){
-        items.push(["signature",s+"\n"+ls[following]]);k=following+1;continue;
+        appendSignature(s+"\n"+ls[following]);k=following+1;continue;
       }
-      items.push(["signature",s]);k++;continue;
+      appendSignature(s);k++;continue;
     }
     if(!altBlock && following<m && isDate(ls[following]) && isName(s) && (k===0||!ls[k-1])){
-      items.push(["signature",s+"\n"+ls[following]]);k=following+1;continue;
+      appendSignature(s+"\n"+ls[following]);k=following+1;continue;
     }
     if(s==="{{"){altBlock=true;k++;continue;}
     if(s==="}}"){altBlock=false;k++;continue;}
@@ -658,15 +667,43 @@ function classifyPoem(lines){
   }
   return items;
 }
+function parseAppendix(title,lines){
+  const intro=[],articles=[];let current=null;
+  for(const line of lines){
+    const heading=/^####\s+(.+)$/.exec(line);
+    if(heading){current={title:heading[1].trim(),lines:[]};articles.push(current);}
+    else (current?current.lines:intro).push(line);
+  }
+  for(const article of articles){
+    const body=article.lines;delete article.lines;
+    const first=body.findIndex(line=>line.trim());let author='';
+    if(first>=0 && /^作者\s*[:：]/.test(body[first]))author=body.splice(first,1)[0].replace(/^作者\s*[:：]\s*/,'');
+    Object.assign(article,{author,poem:false,items:classify(body,false)});
+  }
+  const normalize=values=>values.map(line=>line.replace(/^#{1,4}\s+/,'##### ')).join('\n').trim();
+  return {title,text:normalize(lines),intro:normalize(intro),articles};
+}
 function parseBook(srcText){
   const raw = srcText.replace(/\r\n?/g,"\n").split("\n");
   const n = raw.length;
   let titlePageText=[], titlePageTitle=null;
   let preface=[], afterword=[]; let prefaceTitle=null, afterwordTitle=null;
-  const chapters=[], volumes=[]; let volume=null, i=0;
+  const chapters=[], volumes=[], appendices=[], endmatter_order=[]; let volume=null, i=0;
   while(i<n){
     let s = raw[i].trim();
+    s=s.replace(/^#{2,4}\s+((?:后记|跋)(?:[\s:：、—–-].*)?)$/,'# $1');
     if(!s){ i++; continue; }
+    const appendix=/^(#{1,4})\s+(附录.*)$/.exec(s);
+    if(appendix){
+      const body=[],level=appendix[1].length;i++;
+      while(i<n){
+        const line=raw[i].trim(),heading=/^(#{1,6})(?:\s|$)/.exec(line);
+        if(heading && (heading[1].length<=level || /^#{1,4}\s+(?:后记|跋)(?:[\s:：、—–-]|$)/.test(line) || /^#{1,4}\s+附录(?:[一二三四五六七八九十百零〇两0-9A-Za-z\s:：、]|$)/.test(line)))break;
+        body.push(line);i++;
+      }
+      endmatter_order.push({kind:'appendix',index:appendices.length});
+      appendices.push(parseAppendix(appendix[2].trim(),body));continue;
+    }
     if(s.startsWith("# ") && !s.startsWith("##")){
       const kind = s.replace(/^#+\s*/,"").trim();
       let target=null;
@@ -675,7 +712,10 @@ function parseBook(srcText){
         target=titlePageText;titlePageTitle=kind.replace(/^扉页\s*[:：]\s*/,"");
       }
       else if(PREFACE_KEYS.includes(headingKind)){ target=preface; prefaceTitle=kind.slice(headingKind.length).replace(/^[\s　:：、—–-]+/,"") || (headingKind==="前沿"?"前言":headingKind); }
-      else if(AFTERWORD_KEYS.includes(headingKind)){ target=afterword; afterwordTitle=kind; }
+      else if(AFTERWORD_KEYS.includes(headingKind)){
+        target=afterword; afterwordTitle=kind;
+        if(!endmatter_order.some(item=>item.kind==='afterword'))endmatter_order.push({kind:'afterword'});
+      }
       else if(!chapters.length && prefaceTitle===null && titlePageTitle!==null){target=preface;prefaceTitle=kind;}
       i++;
       if(target===null) continue;
@@ -726,7 +766,7 @@ function parseBook(srcText){
     }
     i++;
   }
-  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n").trim():null, prefaceTitle, afterword: afterword.length?afterword.join("\n").trim():null, afterwordTitle, chapters, volumes };
+  return { titlePageText:titlePageText.join("\n"), titlePageTitle, preface: preface.length?preface.join("\n").trim():null, prefaceTitle, afterword: afterword.length?afterword.join("\n").trim():null, afterwordTitle, chapters, volumes, appendices, endmatter_order };
 }
 
 /* ==================== 文件与图片 ==================== */
@@ -780,7 +820,7 @@ async function loadImage(file){
 }
 function collectImgPaths(data){
   const out = new Set();
-  for(const text of [data.preface,data.afterword]){
+  for(const text of [data.preface,data.afterword,...(data.appendices||[]).map(item=>item.text)]){
     for(const item of classify((text||'').split('\n'),false))if(item[0]==='img')out.add(item[1].path);
   }
   for(const ch of data.chapters) for(const a of ch.articles) for(const it of a.items) if(it[0]==="img") out.add(it[1].path);
@@ -877,7 +917,7 @@ function buildCSS(){
 .subtitle-text { color:${P.subtitleColor}; background-color:${P.subtitleBgOn?P.subtitleBgColor:"transparent"}; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
 .subtitle { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; font-weight:${P.subtitleBold?"bold":"normal"}; break-after:avoid; }
 .signature-leading { break-after:avoid; page-break-after:avoid; widows:2; orphans:2; }
-.signature { text-align:right; text-align-last:right; text-indent:0; margin:0 0 ${P.bodyAfter}pt; line-height:${P.bodyLine}pt; break-inside:avoid; }
+.signature { text-align:right; text-align-last:right; text-indent:0; margin:0 0 ${P.bodyAfter}pt; line-height:${P.bodyLine}pt; break-inside:avoid; page-break-inside:avoid; widows:2; orphans:2; }
 .num-line { text-align:left; margin:0 0 ${P.bodyAfter}pt 0; line-height:${P.bodyLine}pt; }
 .article-title { font-family:${fontStack(P.fTitle)}; font-size:${P.titleSize}pt; line-height:1.2; margin:0; }
 .pagedjs_right_page .article-title, .pagedjs_right_page .article-author { text-align:right; }
@@ -905,7 +945,7 @@ function buildCSS(){
 .chap4-title { display:inline-block; font-family:${fontStack(P.fChapterTitle)}; font-size:${P[isChap5()?"chapter5TitleSize":"chapter4TitleSize"]}pt; color:${hexColor(P[isChap5()?"chapter5TitleColor":"chapter4TitleColor"])}; line-height:1.4; overflow-wrap:anywhere; text-align:left; padding-bottom:5pt; border-bottom:${P.chapterRulePt}pt solid ${hexColor(P.ruleColor)}; }
 .chap4-rose { position:absolute; right:17%; top:43%; width:13%; height:9%; }
 .chap4-intro { position:absolute; right:18%; top:63%; height:24%; width:38%; writing-mode:vertical-rl; text-orientation:upright; text-align:left; font-family:${fontStack(P.fChapterIntro)}; font-size:${P[isChap5()?"chapter5IntroSize":"chapter4IntroSize"]}pt; color:${hexColor(P[isChap5()?"chapter5IntroColor":"chapter4IntroColor"])}; line-height:1.65; letter-spacing:1pt; white-space:pre-wrap; overflow-wrap:normal; word-break:normal; line-break:strict; text-wrap:pretty; }
-.front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
+.front-title { font-family:${fontStack(P.fTitle)}; font-size:${P.frontSize}pt; font-weight:bold; text-align:center; padding-top:${Math.max(0,Number(P.frontTopLines)||0)*Number(P.bodyLine)}pt; margin:0 0 18pt 0; break-inside:avoid; break-after:avoid; }
 .toc-title { font-family:${fontStack(P.fTitle)}; font-size:${P.tocTitleSize}pt; font-weight:bold; text-align:center; margin:0 0 18pt 0; }
 .toc-volume-title { display:flex; align-items:baseline; gap:12pt; font-family:${fontStack(P.fTitle)}; font-size:15.5pt; font-weight:bold; line-height:1.5; margin:24pt 0 14pt; padding-bottom:6pt; border-bottom:.6pt solid ${hexColor(P.bookColor)}; break-after:avoid; break-inside:avoid; }
 .toc-volume-number { font-size:.8em; white-space:nowrap; }
@@ -1023,6 +1063,9 @@ function renderImage(path, caption){
 }
 function groupPictureRuns(parts){
   if(!(Number(P.imgOnlyPageLiftLines)>0))return parts.join("\n");
+  // Switching named pages forces a page break. Mixed articles must stay in
+  // normal flow so an introductory sentence can share a page with its images.
+  if(parts.some(part=>!/^<(?:figure|div) class="img-unit"/.test(part)))return parts.join("\n");
   const result=[];let pictures=[];
   const flush=()=>{if(pictures.length){result.push(pictures.length>1?`<div class="picture-pagination">${pictures.join("\n")}</div>`:pictures[0]);pictures=[];}};
   for(const part of parts){
@@ -1044,8 +1087,8 @@ function renderItems(items){
     if(kind==="img") out.push(renderImage(val.path, val.caption));
     else if(kind==="h") out.push(`<div class="subtitle"><span class="subtitle-text">${esc(val)}</span></div>`);
     else if(kind==="signature"){
-      if(out.length)out[out.length-1]=out[out.length-1].replace('<div class="para">','<div class="para signature-leading">');
-      out.push(`<div class="signature">${renderInline(val).replace(/\n/g,"<br>")}</div>`);
+      if(out.length)out[out.length-1]=out[out.length-1].replace(/<div class="para(\s[^"]*)?"/,(_,classes)=>`<div class="para signature-leading${classes||''}"`);
+      out.push(`<div class="signature">${renderInline(val.replace(/\\(?=\n|$)/g,''))}</div>`);
     }
     else if(kind==="num") out.push(`<div class="num-line">${esc(val)}</div>`);
     else out.push(renderPara(val,kind==="palt"));
@@ -1082,9 +1125,10 @@ function renderArticle(a, key){
   parts.push(`</article>`);
   return parts.join("\n");
 }
-function renderFront(title, text, cls){
+function renderFront(title, text, cls, key=null){
   const paras = renderItems(classify((text||"").split("\n"),false));
-  return `<div class="front-page ${cls}"><div style="height:${P.frontTopLines*P.bodyLine}pt"></div><div class="front-title">${esc(title)}</div>${paras}</div>`;
+  key=key||(cls==='afterword'?'afterword':null);
+  return `<div class="front-page ${cls}"${key?` data-toc-key="${escAttr(key)}"`:''}><div class="front-title">${esc(title)}</div>${paras}</div>`;
 }
 function renderTocEntry(text, key, size, bold, indentPt){
   const num = key ? (P.pad ? "0".repeat(P.pad) : "0") : "";
@@ -1098,6 +1142,39 @@ function renderTocEntry(text, key, size, bold, indentPt){
 }
 function renderTocVolume(volume){
   return `<div class="toc-volume-title"><span class="toc-volume-number">${esc(volume.number)}</span>${volume.title?`<span>${esc(volume.title)}</span>`:""}</div>`;
+}
+function endmatterEntries(data){
+  const entries=new Map();
+  if(data.afterword!=null)entries.set('afterword',{title:data.afterwordTitle||'后记',text:data.afterword,key:'afterword'});
+  (data.appendices||[]).forEach((item,i)=>entries.set('appendix'+i,{...item,key:'appendix'+i}));
+  const ordered=[];
+  for(const ref of data.endmatter_order||[]){
+    const key=ref.kind==='afterword'?'afterword':'appendix'+ref.index;
+    if(entries.has(key)){ordered.push(entries.get(key));entries.delete(key);}
+  }
+  return [...ordered,...entries.values()];
+}
+function renderAfterwordToc(data){
+  return endmatterEntries(data).map((item,i)=>{
+    const articles=item.articles||[];
+    let html=renderEndmatterToc(item.title,item.key,(data.chapters||[]).length+i,articles);
+    if(!isVerticalToc())articles.forEach((article,ai)=>{
+      const key=item.key+'_article'+ai,digits=Math.max(3,Number(P.pad)||0);
+      const number=`<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span>`;
+      if(isIllustratedToc())html+=`<div class="toc-illustrated-row toc-illustrated-article" style="--toc-indent:14pt"><span class="toc-illustrated-text">${esc(article.title)}</span>${number}</div>`;
+      else if(isReferenceToc())html+=`<div class="toc-reference-row">${P.tocShowSequence?`<span class="toc-sequence">${String(ai+1).padStart(2,'0')}</span>`:''}<span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?esc(article.author)+' / ':''}${number}</span></div>`;
+      else html+=renderTocEntry(article.title,key,P.tocEntrySize,false,P.articleIndentPt);
+    });
+    return html;
+  }).join('');
+}
+function renderEndmatterToc(label,key,index=0,articles=[]){
+  const title=esc(label),digits=Math.max(3,Number(P.pad)||0);
+  const number=`<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span>`;
+  if(isIllustratedToc())return `<div class="toc-illustrated-row toc-illustrated-chapter" style="--toc-indent:0pt"><span class="toc-illustrated-text">${title}</span>${number}</div>`;
+  if(isReferenceToc())return `<div class="toc-section-title" style="display:flex;justify-content:space-between;break-after:auto;padding-right:${Math.max(0,Math.min(20,Number(P.toc2PageShiftLeft ?? 5)))}mm"><span>${title}</span>${number}</div>`;
+  if(isVerticalToc())return `<section class="toc-vertical-chapter${index>0 && index%2===0?' toc-vertical-chapter-newpage':''}${index%2?' toc-vertical-chapter-shift':''}"><div class="toc-vertical-block"><div class="toc-vertical-label">${esc(Array.from(label).join('\n'))}</div><div class="toc-vertical-seq"></div><div class="toc-vertical-gap"></div><div class="toc-vertical-entries"><div class="toc-vertical-entry" style="padding-top:5mm;text-align:right">${number}</div>${articles.map((article,ai)=>`<div class="toc-vertical-entry">${esc(article.title)} / <span class="toc-num" data-toc-ref="${key}_article${ai}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span></div>`).join('')}</div></div></section>`;
+  return renderTocEntry(label,key,P.chapterTocSize,P.chapterTocBold,0);
 }
 function renderVerticalToc(data){
   let html='<div class="toc toc-vertical">',lastVolume=null;
@@ -1120,7 +1197,7 @@ function renderVerticalToc(data){
     }
     html+='</section>';
   });
-  return html+'</div>';
+  return html+renderAfterwordToc(data)+'</div>';
 }
 function renderReferenceToc(data){
   let html=`<div class="toc toc-reference"><div class="toc-title">${esc(P.tocTitle)}<span class="toc-english">Content</span></div>`;
@@ -1134,7 +1211,7 @@ function renderReferenceToc(data){
       html+=`<div class="toc-reference-row${chapter.volume?" toc-in-volume":""}">${P.tocShowSequence?`<span class="toc-sequence">${String(ai+1).padStart(2,"0")}</span>`:""}<span class="toc-article-name">${esc(article.title)}</span><span class="toc-meta">${article.author?`${esc(article.author)} / `:""}<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${"0".repeat(digits)}</span></span></div>`;
     });
   });
-  return html+"</div>";
+  return html+renderAfterwordToc(data)+"</div>";
 }
 function tocIllustrationSVG(){
   let rings="";
@@ -1170,7 +1247,7 @@ function renderIllustratedToc(data){
       html+=row('article',esc(article.title),`a${ci}_${ai+1}`,indent);
     });
   });
-  return html+'</div>';
+  return html+renderAfterwordToc(data)+'</div>';
 }
 function splitChapterHeading(value){
   const text=String(value||"").trim();
@@ -1213,7 +1290,7 @@ function renderBook(){
     ch.articles.forEach((a,idx)=>{ tocHtml += renderTocEntry(a.title, "a"+tci+"_"+idx, P.tocEntrySize, false, P.articleIndentPt); });
     tci++;
   }
-  tocHtml += `</div></div>`;
+  tocHtml += renderAfterwordToc(d)+`</div></div>`;
   }
   out.push(tocHtml);
   firstEl = false;
@@ -1255,9 +1332,18 @@ function renderBook(){
     chapterIdx++;
   }
   out.push(`</div>`);
-  if(d.afterword != null){
-    out.push(`<div class="front-wrap break-page">` + renderFront(d.afterwordTitle, d.afterword, "afterword") + `</div>`);
-  }
+  endmatterEntries(d).forEach(item=>{
+    const articles=item.articles||[];
+    if(!articles.length){
+      out.push(`<div class="front-wrap break-page">${renderFront(item.title,item.text,item.key==='afterword'?'afterword':'appendix',item.key)}</div>`);
+    }else{
+      if(item.intro)out.push(`<div class="front-wrap break-page">${renderFront(item.title,item.intro,'appendix',item.key)}</div>`);
+      articles.forEach((article,ai)=>{
+        article._chapter=item.title;
+        out.push(`<div class="awrap break-page"${ai===0&&!item.intro?` data-toc-key="${item.key}"`:''}>${renderArticle(article,item.key+'_article'+ai)}</div>`);
+      });
+    }
+  });
   return out.join("\n");
 }
 
@@ -1397,7 +1483,10 @@ function postProcess(){
   const titlePage = {};
   pages.forEach((pg,i)=>{
     const num = (bodyStart>=0 && i>=bodyStart) ? (i-bodyStart+1) : 0;
-    pg.querySelectorAll("[data-toc-key]").forEach(el=>{ if(num) titlePage[el.getAttribute("data-toc-key")] = num; });
+    pg.querySelectorAll("[data-toc-key]").forEach(el=>{
+      const key=el.getAttribute("data-toc-key");
+      if(num && !(key in titlePage))titlePage[key]=num;
+    });
   });
   pagesEl.querySelectorAll(".toc-num[data-toc-ref]").forEach(el=>{
     const n = titlePage[el.getAttribute("data-toc-ref")];

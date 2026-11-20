@@ -129,8 +129,8 @@ AUTHOR_SIZE = 13
 # ---- 正文 ----
 BODY_SIZE = 10.5
 # 正文字号（磅）：9 磅，就是 Word 里的"小五"。
-BODY_INDENT = 1.5
-# 首行缩进：每个自然段的第一行往里缩进 1.5 个汉字。
+BODY_INDENT = 2
+# 首行缩进：每个自然段的第一行往里缩进 2 个汉字。
 BODY_AFTER = 19.5
 # 段后间距（磅）：每段结束后空 19.5 磅，让段与段之间有空隙。
 BODY_LINE = 19.5
@@ -896,7 +896,22 @@ def bind_signature_to_previous(paragraph):
     paragraph.paragraph_format.keep_together = True
 
 
-SIGNATURE_DATE_RE = re.compile(r"^\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*[日号])?\s*$")
+SIGNATURE_DATE_RE = re.compile(
+    r'^(?:(?:写|记|作)?于\s*)?'
+    r'(?:(?:\d{2,4}|[〇零一二三四五六七八九]{4})\s*年\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*月'
+    r'(?:\s*(?:\d{1,2}|[一二三四五六七八九十廿]{1,3})\s*[日号])?'
+    r'|\d{4}\s*[-/.]\s*\d{1,2}(?:\s*[-/.]\s*\d{1,2})?)'
+    r'(?:\s*[，,]?\s*(?:写于|记于|作于|于)\s*[^。！？；\n]+)?\s*[。.]?$')
+
+
+def is_signature_date(value):
+    import unicodedata
+    text = unicodedata.normalize('NFKC', value.strip()).rstrip('\\').strip()
+    for marker in ('**', '*', '{{'):
+        end = '}}' if marker == '{{' else marker
+        if text.startswith(marker) and text.endswith(end):
+            text = text[len(marker):-len(end)].strip()
+    return bool(SIGNATURE_DATE_RE.fullmatch(text))
 
 
 def classify(lines, base_dir=None, poem=False):
@@ -920,6 +935,9 @@ def classify(lines, base_dir=None, poem=False):
             items.append((kind, text))
         last_body_line = index
 
+    def append_signature(text):
+        items.append(('signature', re.sub(r'\\(?=\n|$)', '', text)))
+
     while k < m:
         s = ls[k]
         if not s:
@@ -930,18 +948,18 @@ def classify(lines, base_dir=None, poem=False):
             following += 1
         def is_signature_name(value):
             return 1 <= len(value) <= 20 and not re.search(r"[。！？；：，、#*{}\[\]()]", value)
-        if not in_alt and SIGNATURE_DATE_RE.fullmatch(s):
+        if not in_alt and is_signature_date(s):
             # A date followed by a final name is one indivisible signature block.
             end = following + 1
             while end < m and not ls[end]:
                 end += 1
             if (following < m and is_signature_name(ls[following])
                     and (end == m or ls[end].startswith('#'))):
-                items.append(("signature", s + "\n" + ls[following])); k = following + 1; continue
-            items.append(("signature", s)); k += 1; continue
-        if (not in_alt and following < m and SIGNATURE_DATE_RE.fullmatch(ls[following])
+                append_signature(s + "\n" + ls[following]); k = following + 1; continue
+            append_signature(s); k += 1; continue
+        if (not in_alt and following < m and is_signature_date(ls[following])
                 and is_signature_name(s) and (k == 0 or not ls[k-1])):
-            items.append(("signature", s + "\n" + ls[following])); k = following + 1; continue
+            append_signature(s + "\n" + ls[following]); k = following + 1; continue
         if s == ALT_OPEN:      # 单独一行 {{ → 开启特殊字体块
             in_alt = True; k += 1; continue
         if s == ALT_CLOSE:     # 单独一行 }} → 结束特殊字体块
@@ -1058,13 +1076,29 @@ def parse_book(src=None):
     preface, afterword = [], []
     title_page, title_page_title = [], None
     preface_title = afterword_title = None
-    chapters, volumes = [], []
+    chapters, volumes, appendices, endmatter_order = [], [], [], []
     volume = None
     i = 0
     while i < n:
         s = raw[i].strip()
+        s = re.sub(r'^#{2,4}\s+((?:后记|跋)(?:[\s:：、—–-].*)?)$', r'# \1', s)
         if not s:
             i += 1
+            continue
+        appendix = re.match(r'^(#{1,4})\s+(附录.*)$', s)
+        if appendix:
+            title, body = appendix.group(2).strip(), []
+            level = len(appendix.group(1))
+            i += 1
+            while i < n:
+                line = raw[i].strip()
+                heading = re.match(r'^(#{1,6})(?:\s|$)', line)
+                if heading and (len(heading.group(1)) <= level or re.match(r'^#{1,4}\s+(?:后记|跋)(?:[\s:：、—–-]|$)', line) or re.match(r'^#{1,4}\s+附录(?:[一二三四五六七八九十百零〇两0-9A-Za-z\s:：、]|$)', line)):
+                    break
+                body.append(line)
+                i += 1
+            endmatter_order.append({'kind': 'appendix', 'index': len(appendices)})
+            appendices.append(parse_appendix(title, body, src_dir))
             continue
         # 前言/自序/序言/代序/写在前面 与 后记/跋（单 # 开头，且不是 ## 或 ### 或 ####）
         if s.startswith("# ") and not s.startswith("##"):
@@ -1078,6 +1112,8 @@ def parse_book(src=None):
                 preface_title = kind[len(heading_kind):].lstrip(" \t　:：、—–-") or ("前言" if heading_kind == "前沿" else heading_kind)
             elif heading_kind in AFTERWORD_KEYS:
                 target, afterword_title = afterword, kind
+                if not any(item['kind'] == 'afterword' for item in endmatter_order):
+                    endmatter_order.append({'kind': 'afterword'})
             elif not chapters and preface_title is None and title_page_title is not None:
                 target, preface_title = preface, kind
             else:
@@ -1159,7 +1195,47 @@ def parse_book(src=None):
         "afterword_title": afterword_title,
         "chapters": chapters,
         "volumes": volumes,
+        "appendices": appendices,
+        "endmatter_order": endmatter_order,
     }
+
+
+def parse_appendix(title, lines, base_dir=None):
+    intro, articles = [], []
+    current = None
+    for line in lines:
+        heading = re.match(r'^####\s+(.+)$', line)
+        if heading:
+            current = {'title': heading.group(1).strip(), 'lines': []}
+            articles.append(current)
+        else:
+            (current['lines'] if current is not None else intro).append(line)
+    for article in articles:
+        body = article.pop('lines')
+        author = ''
+        first = next((i for i, value in enumerate(body) if value.strip()), None)
+        if first is not None and re.match(r'^作者\s*[:：]', body[first]):
+            author = re.sub(r'^作者\s*[:：]\s*', '', body.pop(first))
+        article.update(author=author, poem=False, items=classify(body, base_dir=base_dir))
+    normalize = lambda values: '\n'.join(re.sub(r'^#{1,4}\s+', '##### ', value) for value in values).strip()
+    return {'title': title, 'text': normalize(lines), 'intro': normalize(intro), 'articles': articles}
+
+
+def endmatter_entries(data):
+    """Return back matter in manuscript order; support older saved data too."""
+    entries = {}
+    if data.get('afterword') is not None:
+        entries['afterword'] = {'title': data['afterword_title'], 'text': data['afterword'], 'key': '__book_afterword__'}
+    for index, item in enumerate(data.get('appendices', [])):
+        entries['appendix'+str(index)] = dict(item, key='__book_appendix_{}__'.format(index))
+        for ai, article in enumerate(item.get('articles', [])):
+            article['toc_key'] = '__book_appendix_{}_article_{}__'.format(index, ai)
+    result = []
+    for item in data.get('endmatter_order', []):
+        key = 'afterword' if item['kind'] == 'afterword' else 'appendix'+str(item['index'])
+        if key in entries:
+            result.append(entries.pop(key))
+    return result + list(entries.values())
 
 
 # ---------------- 组装文档 ----------------
@@ -1238,6 +1314,7 @@ def restore_picture_page(doc):
 def picture_page_items(doc, items):
     """Use real Word section geometry for consecutive images, not visual offsets."""
     from docx.enum.section import WD_SECTION
+    mixed = any(kind != 'img' for kind, _ in items)
     index = 0
     while index < len(items):
         if items[index][0] != 'img':
@@ -1247,7 +1324,7 @@ def picture_page_items(doc, items):
             continue
         end = index
         while end < len(items) and items[end][0] == 'img': end += 1
-        if end-index >= 2 and IMG_ONLY_PAGE_LIFT_LINES > 0:
+        if not mixed and end-index >= 2 and IMG_ONLY_PAGE_LIFT_LINES > 0:
             normal_top = doc.sections[-1].top_margin
             section = add_book_section(doc, WD_SECTION.NEW_PAGE)
             doc.part._picture_normal_top = normal_top
@@ -1429,7 +1506,7 @@ def add_title_page(doc, title, author="", size=24, text=""):
             R(p, line, cn=F_BODY, size=BODY_SIZE, color=color)
 
 
-def add_front_page(doc, title, text):
+def add_front_page(doc, title, text, anchor=None):
     """前言/后记页：大标题居中（FRONT_SIZE 加粗），下面是正文段落。"""
     for k in range(FRONT_TOP_LINES):
         sp = doc.add_paragraph()
@@ -1438,6 +1515,7 @@ def add_front_page(doc, title, text):
     p = doc.add_paragraph()
     set_para(p, CENTER, 0, 18, 1.0)
     R(p, title, cn=F_TITLE, size=FRONT_SIZE, bold=True)
+    add_anchor(p, anchor)
     base_dir = os.path.dirname(os.path.abspath(SRC))
     max_width = image_max_width_cm()
     for kind, value in picture_page_items(doc, classify((text or '').split('\n'), base_dir=base_dir)):

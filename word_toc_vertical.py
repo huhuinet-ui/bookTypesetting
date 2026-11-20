@@ -27,7 +27,7 @@ def article_chunks(articles, width_mm, height_mm, size):
 def install_vertical_toc(full, params):
     book = full.book
 
-    def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
+    def build_toc(doc, chapters, page_map, pad=None, preface_title=None, afterword=None, appendices=None, endmatter_order=None, endmatter_articles=None):
         sec = doc.sections[-1]
         offset = book.page_inset()
         sec.page_width=Mm(book.PAGE_W+2*offset);sec.page_height=Mm(book.PAGE_H+2*offset)
@@ -36,7 +36,8 @@ def install_vertical_toc(full, params):
         size=float(params.get('tocEntrySize',9.5)); chapter_size=float(params.get('chapterTocSize',10.5))
         digits=max(3,int(params.get('pad',3)))
         last_volume=None
-        for chapter_index, chapter in enumerate(chapters):
+        endmatter=[{'title':title,'articles':(endmatter_articles or {}).get(key,[]),'toc_key':key} for title,key in (endmatter_order if endmatter_order is not None else ([afterword] if afterword else [])+(appendices or []))]
+        for chapter_index, chapter in enumerate(list(chapters)+endmatter):
             shift = 6 if chapter_index % 2 else 0
             if chapter_index and chapter_index % 2 == 0:
                 start = doc.add_paragraph()
@@ -80,12 +81,19 @@ def install_vertical_toc(full, params):
                     label=('─\n'+'\n'.join(text)+'\n─') if gray and text else '\n'.join(text)
                     book.R(p,label,cn=book.F_CHAPTER_TITLE,size=chapter_size,color=RGBColor.from_string('777080') if gray else book.BLACK)
                 cell=row.cells[3]
+                if 'toc_key' in chapter:
+                    p=cell.paragraphs[0];p.alignment=WD_ALIGN_PARAGRAPH.RIGHT
+                    p.paragraph_format.space_before=Mm(5)
+                    p.paragraph_format.space_after=Pt(0)
+                    p.paragraph_format.line_spacing=Pt(size*1.8)
+                    number=page_map.get(chapter['toc_key'])
+                    book.R(p,str(number).zfill(digits) if number else '',size=size,af='Times New Roman')
                 for index,article in enumerate(chunk):
-                    p=cell.paragraphs[0] if index==0 else cell.add_paragraph()
+                    p=cell.paragraphs[0] if index==0 and 'toc_key' not in chapter else cell.add_paragraph()
                     p.paragraph_format.space_before=Mm(10 if index==0 else 0);p.paragraph_format.space_after=Pt(size*.8)
                     p.paragraph_format.line_spacing=Pt(size*1.8);p.paragraph_format.keep_together=True
                     book.R(p,article['title'],cn=book.F_BODY,size=size)
-                    number=page_map.get(article['title'])
+                    number=page_map.get(article.get('toc_key',article['title']))
                     book.R(p,' / '+(str(number).zfill(digits) if number else ''),size=size,af='Times New Roman')
                 gap=doc.add_paragraph();gap.paragraph_format.space_after=Pt(18);gap.paragraph_format.line_spacing=Pt(1)
     full.build_toc=build_toc

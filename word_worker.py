@@ -73,7 +73,7 @@ def main():
             for kind, val in article["items"]:
                 if kind == "img":
                     validate_image_path(val[0], root)
-    for front_text in (data.get("preface"), data.get("afterword")):
+    for front_text in [data.get("preface"), data.get("afterword")] + [item['text'] for item in data.get('appendices', [])]:
         for kind, val in full.book.classify((front_text or '').split('\n'), base_dir=str(Path(config["source"]).parent)):
             if kind == "img":
                 validate_image_path(val[0], root)

@@ -1,6 +1,6 @@
 """Additional browser-selected Word styles, installed per worker process."""
 from docx.shared import Mm, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -11,7 +11,7 @@ def install_styles(full, params, artwork):
         install_chapters(full, params, artwork)
 
     if params.get('tocStyle', '').startswith('版式二'):
-        def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
+        def build_toc(doc, chapters, page_map, pad=None, preface_title=None, afterword=None, appendices=None, endmatter_order=None, endmatter_articles=None):
             # Match the browser's dedicated reference-TOC page margins.
             section=doc.sections[-1]
             section.top_margin=Mm((book.PAGE_H+2*book.page_inset())*.185)
@@ -44,7 +44,8 @@ def install_styles(full, params, artwork):
             english=english_line.add_run('Content');english.font.name='Times New Roman'
             english.font.size=Pt(9.13*scale)
             last_volume = None
-            for chapter in chapters:
+            endmatter=[{'title':title,'articles':(endmatter_articles or {}).get(key,[]),'toc_key':key} for title,key in (endmatter_order if endmatter_order is not None else ([afterword] if afterword else [])+(appendices or []))]
+            for chapter in list(chapters)+endmatter:
                 volume = chapter.get('volume')
                 if volume and volume is not last_volume:
                     p=doc.add_paragraph();pf=p.paragraph_format
@@ -64,6 +65,11 @@ def install_styles(full, params, artwork):
                     pf.keep_with_next=True
                     pf.left_indent=Pt(indent_pt)
                     full.toc.R(p, chapter['title'], chapter_size, bold=full.CHAPTER_TOC_BOLD)
+                    if 'toc_key' in chapter:
+                        pf.keep_with_next=bool(chapter['articles']);pf.keep_together=True
+                        pf.tab_stops.add_tab_stop(Mm(width-page_shift),WD_TAB_ALIGNMENT.RIGHT)
+                        number=page_map.get(chapter['toc_key'])
+                        full.toc.R(p,'\t'+(str(number).zfill(max(3,pad or 0)) if number else ''),chapter_size*.877)
                 if not chapter['articles']: continue
                 show_sequence=bool(params.get("tocShowSequence",False))
                 table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False
@@ -104,7 +110,7 @@ def install_styles(full, params, artwork):
                     # Leave the same 8 pt breathing room as the preview's flex gap.
                     titlep.paragraph_format.right_indent=Pt(max(0,min(30,float(params.get("tocTitleMetaGap",8)))))
                     meta.alignment=WD_ALIGN_PARAGRAPH.RIGHT
-                    page=page_map.get(article['title'])
+                    page=page_map.get(article.get('toc_key',article['title']))
                     number=str(page).zfill(max(3,int(params.get('pad',3)))) if page else ''
                     author=article.get('author') or ''
                     if author:

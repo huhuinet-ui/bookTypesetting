@@ -68,7 +68,7 @@ def add_illustrated_header(section, book, title, title_size):
 def install_illustrated_toc(full, params):
     book = full.book
 
-    def build_toc(doc, chapters, page_map, pad=None, preface_title=None):
+    def build_toc(doc, chapters, page_map, pad=None, preface_title=None, afterword=None, appendices=None, endmatter_order=None, endmatter_articles=None):
         section = doc.sections[-1]
         doc.settings.odd_and_even_pages_header_footer = True
         section.different_first_page_header_footer = False
@@ -171,6 +171,13 @@ def install_illustrated_toc(full, params):
                 entry(chapter['title'], chapter['title'], 'chapter', 6 if volume else 0)
             for article in chapter['articles']:
                 entry(article['title'], article['title'], 'article', 14 if chapter['title'] is not None else 6 if volume else 0)
+
+        for afterword in (endmatter_order if endmatter_order is not None else ([afterword] if afterword else []) + (appendices or [])):
+            entry(afterword[0], afterword[1], 'chapter')
+            for article in (endmatter_articles or {}).get(afterword[1], []):
+                entry(article['title'],article['toc_key'],'article',14)
+            for cell in table.rows[-1].cells:
+                cell.paragraphs[0].paragraph_format.keep_with_next = False
 
     full.build_toc = build_toc
     original_body = full.build_body
