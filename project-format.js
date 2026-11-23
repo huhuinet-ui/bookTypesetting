@@ -8,7 +8,11 @@
     if(!data.settings || typeof data.settings!=="object" || Array.isArray(data.settings))throw new Error("工程缺少排版设置。");
     const settings={};
     for(const group of groups)for(const item of group.items){
-      const value=Object.hasOwn(data.settings,item.k)?data.settings[item.k]:item.d;
+      let value=Object.hasOwn(data.settings,item.k)?data.settings[item.k]:item.d;
+      if(item.k==='chapterTextColor' && !Object.hasOwn(data.settings,item.k)){
+        const legacy=/纸飞机|指纹树/.test(data.settings.chapterStyle||'')?'chapter5TitleColor':'chapter4TitleColor';
+        value=data.settings[legacy]||item.d;
+      }
       let valid=false;
       if(item.t==="num")valid=typeof value==="number" && Number.isFinite(value) && (item.min==null||value>=item.min) && (item.max==null||value<=item.max);
       else if(item.t==="bool")valid=typeof value==="boolean";

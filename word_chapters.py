@@ -40,12 +40,28 @@ def split_chapter_heading(title):
     return "",text
 
 
+def tree_art_box(width,height,params,title_size,has_intro=True):
+    scale=max(.5,min(3,float(params.get('chapter6ArtScale',180))/100))
+    cx,cy=width*.765,height*.475
+    base_w,base_h=width*.13,height*.09
+    top=cy-base_h*scale/2
+    if params.get('chapter6ArtAutoFit',True):
+        safe=(params.get('bleed',3)+params.get('printMargin',10)+2)*72/25.4
+        lower=height*.29+title_size*1.6+12+8
+        upper=height*.63-8 if has_intro else height-safe
+        scale=max(0,min(scale,(upper-lower)/base_h,2*min(cx-safe,width-safe-cx)/base_w))
+        top=max(lower,min(cy-base_h*scale/2,upper-base_h*scale))
+    return cx-base_w*scale/2,top,base_w*scale,base_h*scale
+
+
 def install_chapters(full, params, artwork):
     book=full.book
     style=str(params.get('chapterStyle',''))
     second=style.startswith('版式二')
-    plane='纸飞机' in style or style.startswith('版式五')
-    prefix='chapter5' if plane else 'chapter4'
+    plane='纸飞机' in style
+    tree='指纹树' in style or style.startswith('版式五')
+    prefix='chapter5' if plane or tree else 'chapter4'
+    chapter_color=params.get('chapterTextColor',params.get(prefix+'TitleColor','#20251c'))
     W=(book.PAGE_W+2*book.page_inset())*72/25.4
     H=(book.PAGE_H+2*book.page_inset())*72/25.4
     original_background=book.add_page_background
@@ -80,7 +96,7 @@ def install_chapters(full, params, artwork):
                 paragraph_border=""
                 text_underline=""
                 if underline and float(params.get('chapterRulePt',book.CHAPTER_RULE_PT)) > 0:
-                    rule_color=str(params.get('ruleColor','#000000')).lstrip('#')
+                    rule_color=str(chapter_color).lstrip('#')
                     text_underline=f'<w:u w:val="single" w:color="{rule_color}"/>'
                     textbox_style=' style="mso-fit-shape-to-text:t"'
                 lines=[]
@@ -103,9 +119,11 @@ def install_chapters(full, params, artwork):
         else:
             number,name=split_chapter_heading(title)
             if number:
-                shape(W*.36,H*.20,W*.46,H*.08,number,font=book.F_CHAPTER_NUMBER,size=params.get(prefix+'NumberSize',21),color=params.get(prefix+'NumberColor','#20251c'))
+                shape(W*.36,H*.20,W*.46,H*.08,number,font=book.F_CHAPTER_NUMBER,size=params.get(prefix+'NumberSize',21),color=chapter_color)
             title_size=params.get(prefix+'TitleSize',21)
-            shape(W*.24,H*.29,W*.58,title_size*1.6+12,name,font=book.F_CHAPTER_TITLE,size=title_size,color=params.get(prefix+'TitleColor','#20251c'),underline=True)
-            if artwork:shape(W*.70,H*.43,W*.13,H*.09,image=artwork[0])
-            if intro:shape(W*.44,H*.63,W*.38,H*.24,wrap_vertical_intro(intro,max(3,int(H*.24/(params.get(prefix+'IntroSize',10)+1))-1)),font=book.F_CHAPTER_INTRO,size=params.get(prefix+'IntroSize',10),color=params.get(prefix+'IntroColor','#20251c'),vertical=True)
+            shape(W*.24,H*.29,W*.58,title_size*1.6+12,name,font=book.F_CHAPTER_TITLE,size=title_size,color=chapter_color,underline=True)
+            if artwork:
+                box=tree_art_box(W,H,params,title_size,bool(intro)) if tree else (W*.70,H*.43,W*.13,H*.09)
+                shape(*box,image=artwork[0])
+            if intro:shape(W*.44,H*.63,W*.38,H*.24,wrap_vertical_intro(intro,max(3,int(H*.24/(params.get(prefix+'IntroSize',10)+1))-1)),font=book.F_CHAPTER_INTRO,size=params.get(prefix+'IntroSize',10),color=chapter_color,vertical=True)
     book.add_chapter_page=chapter

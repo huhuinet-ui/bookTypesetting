@@ -45,12 +45,13 @@ async function exportNativeWord(){
     // Rasterize only the small ornament once; all chapter text stays native Word text.
     if(!String(P.chapterStyle).startsWith('版式一')){
       status.textContent='正在准备章节装饰，文字将以可编辑格式导出…';
-      const svg=isChap5()?chap5PlaneSVG():isChap4()?chap4RoseSVG():chap2OrnamentSVG();
+      const canvas=document.createElement('canvas');
+      canvas.width=isChap2()?800:400;
+      canvas.height=isChap2()?1100:isChap6()?Math.round(canvas.width*(P.pageH+2*printInset())*.09/((P.pageW+2*printInset())*.13)):500;
+      const svg=isChap6()?chap6TreeSVG(canvas.width,canvas.height):isChap5()?chap5PlaneSVG():isChap4()?chap4RoseSVG():chap2OrnamentSVG();
       const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));
       try{
         const image=new Image();image.src=url;await image.decode();
-        const canvas=document.createElement('canvas');
-        canvas.width=isChap2()?800:400;canvas.height=isChap2()?1100:500;
         canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
         chapterArtwork.push(canvas.toDataURL('image/png').split(',')[1]);
         canvas.width=canvas.height=1;

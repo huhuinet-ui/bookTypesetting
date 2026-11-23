@@ -90,11 +90,11 @@ def install_illustrated_toc(full, params):
         section.bottom_margin = Mm(book.page_inset() + max(book.PAGE_H*.10, book.M_BOT))
         section.left_margin = Mm(book.page_inset() + column_margin)
         section.right_margin = Mm(book.page_inset() + column_margin)
-        add_illustrated_header(section, book, full.TOC_TITLE, params.get('tocTitleSize', 20))
+        add_illustrated_header(section, book, full.TOC_TITLE, params.get('tocTitleSize', 12))
         text_width = book.PAGE_W*.51 - safe_right + extra_width
-        chapter_size = float(params.get('chapterTocSize', 10.5))
-        article_size = float(params.get('tocEntrySize', 9.5))
-        digits = max(3, int(params.get('pad', 3)))
+        chapter_size = float(params.get('chapterTocSize', 9.5))
+        article_size = float(params.get('tocEntrySize', 8))
+        digits = max(1, int(pad if pad is not None else params.get('pad', 3)))
         # Equal margins neutralize the document-wide mirrored margins on verso pages.
         # The table itself reserves the illustration area on every TOC page.
         table = doc.add_table(rows=0, cols=2)

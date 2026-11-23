@@ -131,9 +131,9 @@ BODY_SIZE = 10.5
 # 正文字号（磅）：9 磅，就是 Word 里的"小五"。
 BODY_INDENT = 2
 # 首行缩进：每个自然段的第一行往里缩进 2 个汉字。
-BODY_AFTER = 19.5
+BODY_AFTER = 17.5
 # 段后间距（磅）：每段结束后空 19.5 磅，让段与段之间有空隙。
-BODY_LINE = 19.5
+BODY_LINE = 17.5
 # 行距（磅）：行与行之间固定 19.5 磅，约等于字号的 2 倍，行距较宽松。
 
 # ---- 正文标记着色（源文件里用 **文字** 包起来的部分）----
@@ -187,9 +187,9 @@ INTRO_BOX_W = 8.34
 # 文本框宽度（厘米），页面里居中摆放；框内文字左对齐。
 
 # ---- 前言 / 后记页 ----
-FRONT_SIZE = 20
+FRONT_SIZE = 15
 # 前言/后记大标题字号（磅）：20 磅加粗居中，和目录大标题一样。
-FRONT_TOP_LINES = 3
+FRONT_TOP_LINES = 1
 # 前言/后记标题从页顶往下空几行。
 
 # ---- 插图 ----
@@ -1481,9 +1481,12 @@ def add_chapter_page(doc, title, intro=None, anchor=None):
         add_textbox(doc, intro, font=F_CHAPTER_INTRO)
 
 
-def add_title_page(doc, title, author="", size=24, text=""):
+def add_title_page(doc, title, author="", size=24, text="", background_follows_theme=False):
     """独立扉页：书名与可选作者居中；页眉由调用方置空。"""
     color = TITLE_PAGE_COLOR if TITLE_PAGE_COLOR is not None else BOOK_COLOR
+    if background_follows_theme and TITLE_PAGE_COLOR is None:
+        brightness=(BOOK_COLOR[0]*299+BOOK_COLOR[1]*587+BOOK_COLOR[2]*114)/1000
+        color=RGBColor.from_string('20251C' if brightness>=160 else 'FFFFFF')
     p = doc.add_paragraph()
     # Place the title in the upper middle of the finished page.
     offset = max(0, PAGE_H * 0.32 - M_TOP)

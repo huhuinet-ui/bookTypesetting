@@ -40,10 +40,13 @@ TITLE_PAGE_TEXT = ""                      # 自定义扉页正文，留空时按
 TITLE_PAGE_TITLE = ""                     # 留空使用书名
 TITLE_PAGE_AUTHOR = ""                    # 扉页作者，可留空
 TITLE_PAGE_SIZE = 24                      # 扉页书名字号（磅）
+TITLE_PAGE_BG_FOLLOW_THEME = True
+TITLE_PAGE_BACKGROUND = book.add_page_background  # Keep independent from chapter-style overrides.
 TOC_TITLE = "目录"                          # 目录页大标题
+PAGE_NUMBER_PAD = None                    # 工具按用户设置；独立 CLI 留空时按总页数自动计算
 
 # ---- 目录里章节/文章行的样式 ----
-CHAPTER_TOC_SIZE = 10.5        # 目录里章节行的字号（磅）
+CHAPTER_TOC_SIZE = 9.5        # 目录里章节行的字号（磅）
 CHAPTER_TOC_BOLD = True      # 目录里章节行是否加粗
 ARTICLE_INDENT_PT = 24       # 目录里文章行相对章节行缩进多少（磅）
 # ==========================================================
@@ -200,10 +203,13 @@ def build_document(data, page_map, pad):
     if TITLE_PAGE:
         book.clear_header(sec1)
         remove_page_number_start(sec1._sectPr)
+        if TITLE_PAGE_BG_FOLLOW_THEME:
+            TITLE_PAGE_BACKGROUND(sec1,str(book.BOOK_COLOR))
         book.add_title_page(doc,
                             TITLE_PAGE_TITLE or (data.get("title_page_title") if TITLE_PAGE_FROM_SOURCE else None) or BOOK_NAME,
                             TITLE_PAGE_AUTHOR, TITLE_PAGE_SIZE,
-                            TITLE_PAGE_TEXT or ((data.get("title_page") or "") if TITLE_PAGE_FROM_SOURCE else ""))
+                            TITLE_PAGE_TEXT or ((data.get("title_page") or "") if TITLE_PAGE_FROM_SOURCE else ""),
+                            background_follows_theme=TITLE_PAGE_BG_FOLLOW_THEME)
         sec1 = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
         remove_page_number_start(sec1._sectPr)
         book.clear_header(sec1)
@@ -263,7 +269,7 @@ def main():
     chapters = data["chapters"]
     with book.image_source_cache():
         page_map, total_pages, pad, engine = save_paginated(
-            lambda pages, digits: build_document(data, pages, digits), OUT)
+            lambda pages, digits: build_document(data, pages, digits), OUT, page_digits=PAGE_NUMBER_PAD)
     n_ch = sum(1 for c in chapters if c["title"] is not None)
     n_art = sum(len(c["articles"]) for c in chapters)
     print(f"已生成 {OUT}")

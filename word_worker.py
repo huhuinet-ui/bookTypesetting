@@ -19,6 +19,7 @@ def main():
     from docx.shared import RGBColor
     from docx.enum.text import WD_TAB_LEADER
     p = config["params"]
+    full.PAGE_NUMBER_PAD = max(1,min(4,int(p.get('pad',2))))
     full.book.DECO_ON = p.get("decoOn", True) is not False
     full.book.BODY_EACH_LINE = p.get("bodyEachLine", False) is True
     mapping = {'volumeNumberSize': 'VOLUME_NUMBER_SIZE', 'volumeTitleSize': 'VOLUME_TITLE_SIZE', 'pageW': 'PAGE_W', 'pageH': 'PAGE_H', 'bleed': 'BLEED_MM', 'printMargin': 'PRINT_MARGIN_MM', 'mTop': 'M_TOP', 'mBot': 'M_BOT', 'mLeft': 'M_LEFT', 'mRight': 'M_RIGHT', 'headerDist': 'HEADER_DIST', 'fTitle': 'F_TITLE', 'fAuthor': 'F_AUTHOR', 'fBody': 'F_BODY', 'fHead': 'F_HEAD', 'fNum': 'F_NUM', 'titleSize': 'TITLE_SIZE', 'titleTopLines': 'TITLE_TOP_LINES', 'titleBodyGapLines': 'TITLE_BODY_GAP_LINES', 'ruleW': 'RULE_W', 'rulePt': 'RULE_PT', 'decoW': 'DECO_W', 'decoH': 'DECO_H', 'decoX': 'DECO_X', 'decoTop': 'DECO_TOP', 'authorSize': 'AUTHOR_SIZE', 'bodySize': 'BODY_SIZE', 'bodyIndent': 'BODY_INDENT', 'bodyAfter': 'BODY_AFTER', 'bodyLine': 'BODY_LINE', 'markColorOn': 'MARK_COLOR_ON', 'widowControl': 'WIDOW_CONTROL', 'keepTogether': 'KEEP_TOGETHER', 'subtitleBold': 'SUBTITLE_BOLD', 'chapterSize': 'CHAPTER_SIZE', 'chapterTopLines': 'CHAPTER_TOP_LINES', 'chapterRuleW': 'CHAPTER_RULE_W', 'chapterRulePt': 'CHAPTER_RULE_PT', 'introSize': 'INTRO_SIZE', 'introBoxW': 'INTRO_BOX_W', 'frontSize': 'FRONT_SIZE', 'frontTopLines': 'FRONT_TOP_LINES', 'captionSize': 'CAPTION_SIZE', 'imgMaxWRatio': 'IMG_MAX_W_RATIO', 'imgBlockOn': 'IMG_BLOCK_ON', 'imgBlockSize': 'IMG_BLOCK_SIZE', 'imgBlockExpose': 'IMG_BLOCK_EXPOSE', 'imgLineOn': 'IMG_LINE_ON', 'imgLineGap': 'IMG_LINE_GAP', 'poemTitleSize': 'POEM_TITLE_SIZE', 'poemTopLines': 'POEM_TOP_LINES', 'poemTitleAfter': 'POEM_TITLE_AFTER', 'poemMetaSize': 'POEM_META_SIZE', 'poemMetaAfter': 'POEM_META_AFTER', 'poemLineSize': 'POEM_LINE_SIZE', 'poemLine': 'POEM_LINE', 'poemStanzaGap': 'POEM_STANZA_GAP', 'headSize': 'HEAD_SIZE', 'numSize': 'NUM_SIZE', 'cropMarks': 'CROP_MARKS', 'cropBlackW': 'CROP_BLACK_W', 'cropWhiteW': 'CROP_WHITE_W'}
@@ -59,6 +60,7 @@ def main():
     full.toc.ENTRY_LEADER = {"空白":WD_TAB_LEADER.SPACES,"点线":WD_TAB_LEADER.DOTS,"短横线":WD_TAB_LEADER.DASHES}[p.get("tocLeader","空白")]
     full.SRC, full.BOOK_NAME, full.OUT = config["source"], config["name"], config["output"]
     full.TITLE_PAGE = bool(p.get("titlePageOn", True))
+    full.TITLE_PAGE_BG_FOLLOW_THEME = bool(p.get('titlePageBgFollowTheme',True))
     full.TITLE_PAGE_FROM_SOURCE = bool(p.get("titlePageFromSource", True))
     full.TITLE_PAGE_TEXT = str(p.get("titlePageText", ""))
     full.TITLE_PAGE_TITLE = str(p.get("titlePageTitle", ""))

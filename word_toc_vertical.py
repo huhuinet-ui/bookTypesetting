@@ -33,8 +33,8 @@ def install_vertical_toc(full, params):
         sec.page_width=Mm(book.PAGE_W+2*offset);sec.page_height=Mm(book.PAGE_H+2*offset)
         sec.top_margin=Mm(offset+40);sec.bottom_margin=Mm(offset+20)
         sec.left_margin=sec.right_margin=Mm(offset+16)
-        size=float(params.get('tocEntrySize',9.5)); chapter_size=float(params.get('chapterTocSize',10.5))
-        digits=max(3,int(params.get('pad',3)))
+        size=float(params.get('tocEntrySize',8)); chapter_size=float(params.get('chapterTocSize',9.5))
+        digits=max(1,int(pad if pad is not None else params.get('pad',3)))
         last_volume=None
         endmatter=[{'title':title,'articles':(endmatter_articles or {}).get(key,[]),'toc_key':key} for title,key in (endmatter_order if endmatter_order is not None else ([afterword] if afterword else [])+(appendices or []))]
         for chapter_index, chapter in enumerate(list(chapters)+endmatter):

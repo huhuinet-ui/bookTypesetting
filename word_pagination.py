@@ -88,9 +88,9 @@ def measured_pages(result, anchors):
     return {title: int(result['pages'][name]) for name, title in anchors}
 
 
-def save_paginated(build, output, inspect=inspect_document, max_passes=6):
+def save_paginated(build, output, inspect=inspect_document, max_passes=6, page_digits=None):
     """Rebuild until TOC and title parity agree with the complete final layout."""
-    page_map, pad, engine = {}, 3, None
+    page_map, pad, engine = {}, (int(page_digits) if page_digits is not None else 3), None
     previous = set()
     output = Path(output)
     with tempfile.TemporaryDirectory(prefix='book-final-', dir=str(output.parent)) as directory:
@@ -110,7 +110,7 @@ def save_paginated(build, output, inspect=inspect_document, max_passes=6):
             # Include the remaining body pages, not the front matter, in padding.
             first = anchors[0][0] if anchors else None
             body_total = result['total'] - result['physical'][first] + result['pages'][first] if first else result['total']
-            actual_pad = max(1, len(str(body_total)))
+            actual_pad = max(1, int(page_digits)) if page_digits is not None else max(1, len(str(body_total)))
             if actual == page_map and actual_pad == pad:
                 os.replace(str(candidate), str(output))
                 return actual, body_total, pad, engine

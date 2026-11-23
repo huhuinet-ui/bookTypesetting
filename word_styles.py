@@ -20,11 +20,11 @@ def install_styles(full, params, artwork):
             section.right_margin=Mm((book.PAGE_W+2*book.page_inset())*(484.724-389.7)/484.724)
             width=(book.PAGE_W+2*book.page_inset())*(389.7-107.7)/484.724
             scale=(book.PAGE_W+2*book.page_inset())/(484.724*25.4/72)
-            row_size=float(params.get("tocEntrySize", 9.5))
-            chapter_size=float(params.get("chapterTocSize", 10.5))
+            row_size=float(params.get("tocEntrySize", 8))
+            chapter_size=float(params.get("chapterTocSize", 9.5))
             row_pitch=max(20*scale, row_size*1.3)
-            page_shift=max(0,min(20,float(params.get("toc2PageShiftLeft",5))))
-            title_size=float(params.get("tocTitleSize", 20))
+            page_shift=max(0,min(20,float(params.get("toc2PageShiftLeft",8))))
+            title_size=float(params.get("tocTitleSize", 12))
             # Two explicit compact paragraphs avoid Word expanding a soft line break
             # with inherited paragraph-mark formatting or document-grid settings.
             title=doc.add_paragraph()
@@ -69,13 +69,13 @@ def install_styles(full, params, artwork):
                         pf.keep_with_next=bool(chapter['articles']);pf.keep_together=True
                         pf.tab_stops.add_tab_stop(Mm(width-page_shift),WD_TAB_ALIGNMENT.RIGHT)
                         number=page_map.get(chapter['toc_key'])
-                        full.toc.R(p,'\t'+(str(number).zfill(max(3,pad or 0)) if number else ''),chapter_size*.877)
+                        full.toc.R(p,'\t'+(str(number).zfill(max(1,int(pad if pad is not None else params.get('pad',3)))) if number else ''),chapter_size*.877)
                 if not chapter['articles']: continue
                 show_sequence=bool(params.get("tocShowSequence",False))
                 table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False
                 sequence_mm=23*scale*25.4/72
                 row_width=width-indent_pt*25.4/72-page_shift
-                title_ratio=max(.30,min(.90,float(params.get("tocTitleWidthPercent",66))/100))
+                title_ratio=max(.30,min(.90,float(params.get("tocTitleWidthPercent",90))/100))
                 meta_width=row_width*(1-title_ratio)
                 widths=[sequence_mm,row_width-sequence_mm-meta_width,meta_width] if show_sequence else [row_width-meta_width,meta_width]
                 for column,w in zip(table.columns,widths):column.width=Mm(w)
@@ -111,7 +111,7 @@ def install_styles(full, params, artwork):
                     titlep.paragraph_format.right_indent=Pt(max(0,min(30,float(params.get("tocTitleMetaGap",8)))))
                     meta.alignment=WD_ALIGN_PARAGRAPH.RIGHT
                     page=page_map.get(article.get('toc_key',article['title']))
-                    number=str(page).zfill(max(3,int(params.get('pad',3)))) if page else ''
+                    number=str(page).zfill(max(1,int(pad if pad is not None else params.get('pad',3)))) if page else ''
                     author=article.get('author') or ''
                     if author:
                         run=meta.add_run(author+' / ');run.font.size=Pt(row_size)
