@@ -29,14 +29,16 @@ def split_chapter_heading(title):
     """Preserve the manuscript's sequence label; never invent a chapter number."""
     text=str(title).strip()
     numbers=r"[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+"
+    separators=r"[\s　|｜¦:：/／_·•、.．—–-]"
     patterns=[
-        rf"^((?:第)?{numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节){numbers}|[上中下][章篇部卷集辑])(?:[\s　:：、.．—-]*)(.*)$",
-        rf"^({numbers}[、.．）)])\s*(.*)$",
-        rf"^({numbers})[\s　:：—-]+(.*)$",
+        rf"^((?:十一|十二|十|[一二三四五六七八九])月)(?:{separators}+(.*)|$)",
+        rf"^((?:第)?{numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节){numbers}|[上中下][章篇部卷集辑]){separators}*(.*)$",
+        rf"^({numbers}[、.．）)]){separators}*(.*)$",
+        rf"^({numbers}){separators}+(.*)$",
     ]
     for pattern in patterns:
         match=re.match(pattern,text)
-        if match:return match[1],match[2].strip()
+        if match:return match[1],(match[2] or '').strip()
     return "",text
 
 
@@ -121,6 +123,7 @@ def install_chapters(full, params, artwork):
             if number:
                 shape(W*.36,H*.20,W*.46,H*.08,number,font=book.F_CHAPTER_NUMBER,size=params.get(prefix+'NumberSize',21),color=chapter_color)
             title_size=params.get(prefix+'TitleSize',21)
+            title_size=book.fitted_title_size('chapter',name,title_size)
             shape(W*.24,H*.29,W*.58,title_size*1.6+12,name,font=book.F_CHAPTER_TITLE,size=title_size,color=chapter_color,underline=True)
             if artwork:
                 box=tree_art_box(W,H,params,title_size,bool(intro)) if tree else (W*.70,H*.43,W*.13,H*.09)

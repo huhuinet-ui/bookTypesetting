@@ -108,6 +108,15 @@ TITLE_BODY_GAP_LINES = 3
 DECO_W, DECO_H = 34.02, 72.57
 DECO_ON = True  # 是否展示文章标题旁的矩形装饰
 BODY_EACH_LINE = False  # 旧 MD 可选择将每个物理行视为独立段落
+TITLE_FIT_PLAN = {}
+
+
+def fitted_title_size(kind, text, base):
+    """Reuse browser font measurements so preview and native Word share sizes."""
+    size = TITLE_FIT_PLAN.get((kind, text), base)
+    if not isinstance(size, (float, int)) or isinstance(size, bool) or not 0 < size <= base:
+        return base
+    return size
 # 外侧装饰矩形约 12 × 25.6 mm，填充色为书籍主色调。
 DECO_X = -8.5
 # 距成品外边缘 -3 mm：伸入出血区。右页在右、左页在左。
@@ -187,7 +196,7 @@ INTRO_BOX_W = 8.34
 # 文本框宽度（厘米），页面里居中摆放；框内文字左对齐。
 
 # ---- 前言 / 后记页 ----
-FRONT_SIZE = 15
+FRONT_SIZE = 14
 # 前言/后记大标题字号（磅）：20 磅加粗居中，和目录大标题一样。
 FRONT_TOP_LINES = 1
 # 前言/后记标题从页顶往下空几行。
@@ -1347,7 +1356,7 @@ def build_article(doc, art, first, recto=True, anchor=None):
         R(sp, "", size=BODY_SIZE)
     pt = doc.add_paragraph()
     set_para(pt, align, 0, 0, 1.0)
-    R(pt, art["title"], cn=F_TITLE, size=TITLE_SIZE)
+    R(pt, art["title"], cn=F_TITLE, size=fitted_title_size('article', art['title'], TITLE_SIZE))
     add_anchor(pt, anchor)   # 非打印书签用于整本书的最终页码校验
 
     if DECO_ON:

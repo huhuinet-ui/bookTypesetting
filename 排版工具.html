@@ -174,6 +174,7 @@ body { display:flex; flex-direction:column; height:100dvh; overflow:hidden; }
     <p class="panel-note">先设置纸张和字体，再按书页顺序调整内容，最后检查页码与印刷。修改后自动更新预览。</p>
     <p class="panel-note" id="projectStatus" role="status" aria-live="polite">排版完成或修改设置后，点击「保存排版工程」。JSON 保存设置，MD 和图片请保留在原书稿文件夹中。</p>
     <input id="settingSearch" type="search" placeholder="搜索参数，如：字号、边距、目录" aria-label="搜索排版参数">
+    <p id="titleFitStatus" class="panel-note" role="status" aria-live="polite" hidden style="white-space:pre-line;color:#95531b"></p>
     <nav id="settingsNav" aria-label="设置分类"></nav>
     <div class="panel-actions"><button id="expandSettings" type="button">全部展开</button><button id="collapseSettings" type="button">全部收起</button></div>
     <div id="formHost"></div><p id="noSettings" hidden>没有找到匹配的参数，请换个关键词。</p>
@@ -249,6 +250,8 @@ const GROUPS = [
  ]},
  { title:"文章标题", items:[
    {k:"titleSize",l:"标题字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:40},
+   {k:"titleSingleLine",l:"文章标题单行适配（超宽自动缩小）",t:"bool",d:true},
+   {k:"titleMinSize",l:"文章标题最小字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:40},
    {k:"titleTopLines",l:"标题上方空行",t:"num",d:3,u:"行",s:1,min:0,max:20},
    {k:"titleBodyGapLines",l:"标题下方空行",t:"num",d:3,u:"行",s:1,min:0,max:20},
    {k:"ruleW",l:"下划线宽",t:"num",d:2.54,u:"cm",s:0.1,min:0,max:20},
@@ -294,6 +297,8 @@ const GROUPS = [
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
    {k:"chapter2TitleSize",l:"版式2·标题字号",t:"num",d:18,u:"pt",s:0.5,min:5,max:96},
    {k:"chapterTextColor",l:"版式3/4/5·文字与下划线颜色",t:"color",d:"#20251c"},
+   {k:"chapterTitleSingleLine",l:"版式3/4/5·章节名称单行适配",t:"bool",d:true},
+   {k:"chapterTitleMinSize",l:"版式3/4/5·章节名称最小字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4NumberSize",l:"版式3·章节序号字号",t:"num",d:21,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4TitleSize",l:"版式3·标题字号",t:"num",d:21.6,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4IntroSize",l:"版式3·引言字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
@@ -305,7 +310,7 @@ const GROUPS = [
    {k:"chapterIntroAutoFit",l:"版式3/4/5·引言过长时自动缩小字号",t:"bool",d:false},
  ]},
  { title:"前言 / 后记", items:[
-   {k:"frontSize",l:"大标题字号",t:"num",d:15,u:"pt",s:0.5,min:6,max:40},
+   {k:"frontSize",l:"大标题字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:40},
    {k:"frontTopLines",l:"标题上方空行",t:"num",d:1,u:"行",s:1,min:0,max:20},
  ]},
  { title:"插图", items:[
@@ -349,8 +354,8 @@ const GROUPS = [
    {k:"toc3ExtraWidth",l:"版式3·目录栏加宽",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:40},
-   {k:"tocEntrySize",l:"条目字号",t:"num",d:8,u:"pt",s:0.5,min:6,max:30},
-   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:9.5,u:"pt",s:0.5,min:6,max:30},
+   {k:"tocEntrySize",l:"条目字号",t:"num",d:10,u:"pt",s:0.5,min:6,max:30},
+   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:30},
    {k:"chapterTocBold",l:"章节条目加粗",t:"bool",d:true},
    {k:"articleIndentPt",l:"文章条目缩进",t:"num",d:24,u:"pt",s:1,min:0,max:100},
    {k:"entrySpacing",l:"条目行距倍数",t:"num",d:1.2,u:"",s:0.1,min:1,max:3},
@@ -1117,11 +1122,38 @@ function renderPoems(items){
   }
   return out.join("\n");
 }
+const titleFitEntries=new Map();
+function fittedTitle(kind,text){
+  const article=kind==="article",base=Number(article?P.titleSize:P[(isChap5()||isChap6())?"chapter5TitleSize":"chapter4TitleSize"]);
+  const enabled=article?P.titleSingleLine!==false:P.chapterTitleSingleLine!==false;
+  const minimum=Number(article?P.titleMinSize:P.chapterTitleMinSize);
+  const width=(article?P.pageW-P.mLeft-P.mRight:(P.pageW+2*printInset())*.58)*72/25.4;
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+  ctx.font=`100px ${fontStack(article?P.fTitle:P.fChapterTitle)}`;
+  const unit=ctx.measureText(String(text)).width/100;
+  const result=TitleFit.calculate(size=>unit*size,base,minimum,width,enabled);
+  titleFitEntries.set(kind+'\n'+text,{kind,text,...result});
+  return result;
+}
+function fittedTitleStyle(kind,text){
+  const fit=fittedTitle(kind,text);
+  return fit.enabled?`font-size:${fit.size}pt;white-space:${fit.fits?'nowrap':'normal'};overflow-wrap:anywhere;`:'';
+}
+async function prepareTitleFit(){
+  await Promise.all([document.fonts.load(`14pt ${fontStack(P.fTitle)}`,'文章标题'),document.fonts.load(`21pt ${fontStack(P.fChapterTitle)}`,'章节名称')]);
+  titleFitEntries.clear();
+}
+function showTitleFitWarnings(){
+  const warnings=[...titleFitEntries.values()].filter(item=>item.enabled&&!item.fits);
+  const el=document.getElementById('titleFitStatus');
+  el.hidden=!warnings.length;
+  el.textContent=warnings.length?'以下标题缩到最小字号仍超宽，暂保留换行。请缩短标题、降低最小字号或增加可用宽度：\n'+warnings.map(item=>`${item.kind==='article'?'文章':'章节'}：${item.text}（${item.size} pt）`).join('\n'):'';
+}
 function renderArticle(a, key){
   const parts = [];
   parts.push(`<article class="article" data-chapter="${escAttr(a._chapter||'')}" data-toc-key="${key}">`);
   parts.push(`<div style="height:${P.titleTopLines*P.bodyLine}pt"></div>`);
-  parts.push(`<div class="article-title">${esc(a.title)}</div>`);
+  parts.push(`<div class="article-title" style="${fittedTitleStyle('article',a.title)}">${esc(a.title)}</div>`);
   if(a.author){
     parts.push(`<div class="article-rule"></div>`);
     parts.push(`<div class="article-author">${esc(a.author)}</div>`);
@@ -1258,12 +1290,14 @@ function renderIllustratedToc(data){
 function splitChapterHeading(value){
   const text=String(value||"").trim();
   const numbers="[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+";
+  const separators="[\\s　|｜¦:：/／_·•、.．—–-]";
   const patterns=[
-    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)${numbers}|[上中下][章篇部卷集辑])(?:[\\s　:：、.．—-]*)(.*)$`),
-    new RegExp(`^(${numbers}[、.．）)])\\s*(.*)$`),
-    new RegExp(`^(${numbers})[\\s　:：—-]+(.*)$`),
+    new RegExp(`^((?:十一|十二|十|[一二三四五六七八九])月)(?:${separators}+(.*)|$)`),
+    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)${numbers}|[上中下][章篇部卷集辑])${separators}*(.*)$`),
+    new RegExp(`^(${numbers}[、.．）)])${separators}*(.*)$`),
+    new RegExp(`^(${numbers})${separators}+(.*)$`),
   ];
-  for(const pattern of patterns){const match=text.match(pattern);if(match)return {number:match[1],title:match[2].trim()};}
+  for(const pattern of patterns){const match=text.match(pattern);if(match)return {number:match[1],title:(match[2]||"").trim()};}
   return {number:"",title:text};
 }
 function renderBook(){
@@ -1316,7 +1350,7 @@ function renderBook(){
       let cp;
       if(isChap4() || isChap5() || isChap6()){
         const {number,title}=splitChapterHeading(ch.title);
-        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout">${number?`<div class="chap4-number">${esc(number)}</div>`:""}<div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap6()?chap6TreeSVG():isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
+        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout">${number?`<div class="chap4-number">${esc(number)}</div>`:""}<div class="chap4-heading" style="${P.chapterTitleSingleLine!==false?'width:58%;max-width:58%':''}"><div class="chap4-title" style="${fittedTitleStyle('chapter',title)}">${esc(title)}</div></div><div class="chap4-rose">${isChap6()?chap6TreeSVG():isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
       } else if(isChap2()){
         cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
       } else {
@@ -1388,6 +1422,7 @@ async function renderBookPreview(){
   document.getElementById("statusBar").style.display = "flex";
   document.getElementById("stInfo").textContent = "排版中…";
   await ensureImages();
+  await prepareTitleFit();
   let st = document.getElementById("bookStyle");
   if(!st){ st = document.createElement("style"); st.id = "bookStyle"; document.head.appendChild(st); }
   st.textContent = buildCSS();
@@ -1405,6 +1440,7 @@ async function renderBookPreview(){
     applyZoom();
   }
   postProcess();
+  showTitleFitWarnings();
 }
 
 let liftedImageNodes=[];
@@ -1820,6 +1856,7 @@ document.getElementById("emptyImport").addEventListener("click",()=>document.get
 applyZoom();
 </script>
 <script src="word-import.js" data-pagedjs-ignore></script>
+<script src="title-fit.js" data-pagedjs-ignore></script>
 <script src="word-export.js" data-pagedjs-ignore></script>
 <script src="project-format.js" data-pagedjs-ignore></script>
 <script src="project-settings.js" data-pagedjs-ignore></script>

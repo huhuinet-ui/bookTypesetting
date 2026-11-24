@@ -20,8 +20,8 @@ def install_styles(full, params, artwork):
             section.right_margin=Mm((book.PAGE_W+2*book.page_inset())*(484.724-389.7)/484.724)
             width=(book.PAGE_W+2*book.page_inset())*(389.7-107.7)/484.724
             scale=(book.PAGE_W+2*book.page_inset())/(484.724*25.4/72)
-            row_size=float(params.get("tocEntrySize", 8))
-            chapter_size=float(params.get("chapterTocSize", 9.5))
+            row_size=float(params.get("tocEntrySize", 10))
+            chapter_size=float(params.get("chapterTocSize", 14))
             row_pitch=max(20*scale, row_size*1.3)
             page_shift=max(0,min(20,float(params.get("toc2PageShiftLeft",8))))
             title_size=float(params.get("tocTitleSize", 12))

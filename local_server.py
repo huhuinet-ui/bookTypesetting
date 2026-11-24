@@ -86,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/theme-colors':
             return self.reply(200, json.dumps({'colors': read_theme_colors()}).encode(), 'application/json')
         if path == '/api/session':
-            return self.reply(200, json.dumps({'token': TOKEN, 'wordBinaryUpload': True, 'wordFileResults': True, 'wordBinaryExport': True}).encode(), 'application/json')
+            return self.reply(200, json.dumps({'token': TOKEN, 'wordBinaryUpload': True, 'wordFileResults': True, 'wordBinaryExport': True, 'titleFitExport': True}).encode(), 'application/json')
         if path.startswith('/api/word-result/'):
             parts = path.split('/')
             with CONVERSION_RESULTS_LOCK:
@@ -107,6 +107,7 @@ class Handler(BaseHTTPRequestHandler):
                 shutil.copyfileobj(stream, self.wfile, 1024 * 1024)
             return
         allowed = {'/': '排版工具.html', '/排版工具.html': '排版工具.html', '/word-export.js': 'word-export.js', '/word-import.js': 'word-import.js', '/project-format.js': 'project-format.js', '/project-settings.js': 'project-settings.js'}
+        allowed['/title-fit.js'] = 'title-fit.js'
         if path.startswith('/vendor/') and Path(path).name in {'html-to-image-1.11.13.js', 'pdf-lib-1.17.1.min.js'}:
             name = path.lstrip('/')
         else:
@@ -267,7 +268,7 @@ class Handler(BaseHTTPRequestHandler):
                     artwork.append(str(image))
                 config = root / '_export_config.json'
                 output = root / '_export_result.docx'
-                config.write_text(json.dumps(dict(source=str(source), output=str(output), root=str(root), name=data['name'], params=data['params'], chapterArtwork=artwork), ensure_ascii=False), encoding='utf-8')
+                config.write_text(json.dumps(dict(source=str(source), output=str(output), root=str(root), name=data['name'], params=data['params'], chapterArtwork=artwork, titleFitPlan=data.get('titleFitPlan', [])), ensure_ascii=False), encoding='utf-8')
                 result = subprocess.run([sys.executable, str(ROOT / 'word_worker.py'), str(config)], cwd=ROOT, capture_output=True, timeout=1800)
                 if result.returncode:
                     details = (result.stderr or result.stdout).decode('utf-8', 'replace')

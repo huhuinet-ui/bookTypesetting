@@ -37,6 +37,10 @@ async function exportNativeWord(){
   status.textContent='正在调用本机 Word 排版并计算目录页码，请稍候…';
   try{
     readForm();
+    await prepareTitleFit();
+    renderBook(); // Collect the same measured title sizes used by preview, including endmatter.
+    showTitleFitWarnings();
+    const titleFitPlan=[...titleFitEntries.values()];
     const sourceFile=folderFiles.get(markdownRelPath), paramsKey=JSON.stringify(P);
     if(cachedWord && cachedWord.book===parsedData && cachedWord.source===sourceFile && cachedWord.key===paramsKey){
       downloadWordBlob(cachedWord.blob);status.textContent='Word 已下载（复用本次书稿的排版结果）。';return;
@@ -58,8 +62,9 @@ async function exportNativeWord(){
       }finally{URL.revokeObjectURL(url);}
     }
     const session=await fetch('/api/session');if(!session.ok)throw new Error('本地服务未就绪');
-    const {token,wordBinaryExport}=await session.json(),files=[];
+    const {token,wordBinaryExport,titleFitExport}=await session.json(),files=[];
     if(!wordBinaryExport)throw new Error('本地服务仍是旧版本，请关闭原启动窗口，重新运行启动器，并使用新打开的页面重试。');
+    if(!titleFitExport && (P.titleSingleLine!==false || P.chapterTitleSingleLine!==false))throw new Error('标题单行适配需要更新后的本地服务。请关闭原启动窗口并重新运行启动器。');
     const uploadId=crypto.randomUUID();
     const upload=async(path,file)=>{
       if(!file)throw new Error('文件读取失败：'+path+'。请重新导入书稿文件夹。');
@@ -78,7 +83,7 @@ async function exportNativeWord(){
       if(!uploaded.has(rel)){await upload(rel,imgInfo.get(path)?.sourceBlob || file);uploaded.add(rel);}
     }
     status.textContent='素材上传完成，正在调用本机 Word 排版并计算目录页码…';
-    const response=await fetch('/api/export-word',{method:'POST',headers:{'Content-Type':'application/json','X-Export-Token':token},body:JSON.stringify({source:markdownRelPath,name:BOOK_NAME,params:P,files,chapterArtwork,uploadId})});
+    const response=await fetch('/api/export-word',{method:'POST',headers:{'Content-Type':'application/json','X-Export-Token':token},body:JSON.stringify({source:markdownRelPath,name:BOOK_NAME,params:P,files,chapterArtwork,uploadId,titleFitPlan})});
     if(!response.ok)throw new Error(await response.text());
     const blob=await response.blob();
     cachedWord={book:parsedData,source:sourceFile,key:paramsKey,blob};

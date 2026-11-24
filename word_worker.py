@@ -19,6 +19,8 @@ def main():
     from docx.shared import RGBColor
     from docx.enum.text import WD_TAB_LEADER
     p = config["params"]
+    full.book.TITLE_FIT_PLAN = {(item['kind'], item['text']): item['size']
+                               for item in config.get('titleFitPlan', []) if item.get('enabled')}
     full.PAGE_NUMBER_PAD = max(1,min(4,int(p.get('pad',2))))
     full.book.DECO_ON = p.get("decoOn", True) is not False
     full.book.BODY_EACH_LINE = p.get("bodyEachLine", False) is True
