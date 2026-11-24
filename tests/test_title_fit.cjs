@@ -15,3 +15,9 @@ test('disabled adaptation and minimum larger than configured size',()=>{
   assert.equal(calculate(size=>size*80,14,10,100,false).size,14);
   assert.equal(calculate(size=>size*80,8,12,100).size,8);
 });
+test('vertical titles account for character spacing and insufficient height',()=>{
+  const fit=calculate(size=>10*(size+3),18,12,180);
+  assert.equal(fit.size,14);assert.equal(fit.fits,true);
+  const noRoom=calculate(size=>10*(size+3),18,12,0);
+  assert.equal(noRoom.size,12);assert.equal(noRoom.fits,false);
+});

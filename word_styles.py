@@ -64,12 +64,17 @@ def install_styles(full, params, artwork):
                     pf.space_before=Pt(20*scale);pf.space_after=Pt(17*scale);pf.line_spacing=Pt(max(19*scale, chapter_size*1.3))
                     pf.keep_with_next=True
                     pf.left_indent=Pt(indent_pt)
-                    full.toc.R(p, chapter['title'], chapter_size, bold=full.CHAPTER_TOC_BOLD)
+                    is_afterword=chapter.get('toc_key')=='__book_afterword__'
+                    heading_size=row_size if is_afterword else chapter_size
+                    if is_afterword:
+                        book.R(p, chapter['title'], cn=book.F_BODY, size=heading_size, bold=True)
+                    else:
+                        full.toc.R(p, chapter['title'], heading_size, bold=full.CHAPTER_TOC_BOLD)
                     if 'toc_key' in chapter:
                         pf.keep_with_next=bool(chapter['articles']);pf.keep_together=True
                         pf.tab_stops.add_tab_stop(Mm(width-page_shift),WD_TAB_ALIGNMENT.RIGHT)
                         number=page_map.get(chapter['toc_key'])
-                        full.toc.R(p,'\t'+(str(number).zfill(max(1,int(pad if pad is not None else params.get('pad',3)))) if number else ''),chapter_size*.877)
+                        full.toc.R(p,'\t'+(str(number).zfill(max(1,int(pad if pad is not None else params.get('pad',3)))) if number else ''),heading_size*.877)
                 if not chapter['articles']: continue
                 show_sequence=bool(params.get("tocShowSequence",False))
                 table=doc.add_table(rows=0,cols=3 if show_sequence else 2);table.autofit=False

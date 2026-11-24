@@ -79,7 +79,8 @@ def install_vertical_toc(full, params):
                     p.paragraph_format.line_spacing=Pt(chapter_size*1.4)
                     p.paragraph_format.keep_together=True
                     label=('─\n'+'\n'.join(text)+'\n─') if gray and text else '\n'.join(text)
-                    book.R(p,label,cn=book.F_CHAPTER_TITLE,size=chapter_size,color=RGBColor.from_string('777080') if gray else book.BLACK)
+                    is_afterword=chapter.get('toc_key')=='__book_afterword__' and not gray
+                    book.R(p,label,cn=book.F_BODY if is_afterword else book.F_CHAPTER_TITLE,size=size if is_afterword else chapter_size,bold=is_afterword,color=RGBColor.from_string('777080') if gray else book.BLACK)
                 cell=row.cells[3]
                 if 'toc_key' in chapter:
                     p=cell.paragraphs[0];p.alignment=WD_ALIGN_PARAGRAPH.RIGHT

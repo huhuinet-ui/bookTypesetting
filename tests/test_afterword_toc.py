@@ -7,6 +7,17 @@ from word_styles import install_styles
 
 
 class AfterwordTocTests(unittest.TestCase):
+    def test_afterword_header_uses_custom_title_and_continuous_page_field(self):
+        doc,_=book.new_doc()
+        section=full.add_front_matter(doc,'写在最后','后记正文',show_header=True,pad=3)
+        self.assertIn('写在最后',''.join(p.text for p in section.header.paragraphs))
+        self.assertIn(book.BOOK_NAME,''.join(p.text for p in section.even_page_header.paragraphs))
+        self.assertIn('PAGE',''.join(t.text or '' for t in section.header._element.iter(qn('w:instrText'))))
+        self.assertIsNone(section._sectPr.find(qn('w:pgNumType')))
+        self.assertFalse(section.different_first_page_header_footer)
+        preface=full.add_front_matter(doc,'前言','前言正文')
+        self.assertEqual(''.join(p.text for p in preface.header.paragraphs),'')
+
     def test_all_toc_styles_include_custom_afterword_and_measured_page(self):
         chapters=[{'title':'第一章 起点','articles':[{'title':'一篇文章','author':''}]}]
         for style in ('版式一','版式二','版式三','版式四'):
@@ -32,11 +43,18 @@ class AfterwordTocTests(unittest.TestCase):
                     for attr in ('space_before','space_after','line_spacing'):
                         self.assertEqual(getattr(chapter.paragraph_format,attr),getattr(closing.paragraph_format,attr))
                     self.assertEqual(chapter.runs[0].bold,closing.runs[0].bold)
-                    self.assertEqual(chapter.runs[0].font.size,closing.runs[0].font.size)
+                    self.assertEqual(closing.runs[0].font.size.pt,10)
+                    self.assertTrue(closing.runs[0].bold)
+                    self.assertEqual(closing.runs[0]._element.rPr.rFonts.get(qn('w:eastAsia')),book.F_BODY)
                 if style=='版式四':
                     labels=[table.cell(0,0).text for table in doc.tables]
                     self.assertIn('写\n在\n最\n后',labels)
                     self.assertIn('附\n录\n一\n：\n年\n表',labels)
+                    closing_table=next(table for table in doc.tables if table.cell(0,0).text=='写\n在\n最\n后')
+                    run=closing_table.cell(0,0).paragraphs[0].runs[0]
+                    self.assertEqual(run.font.size.pt,8)
+                    self.assertTrue(run.bold)
+                    self.assertEqual(run._element.rPr.rFonts.get(qn('w:eastAsia')),book.F_BODY)
                     self.assertEqual(doc.tables[-1].cell(0,0).paragraphs[0].runs[0].font.size,
                                      doc.tables[0].cell(0,0).paragraphs[0].runs[0].font.size)
                 absent,_=book.new_doc()

@@ -150,13 +150,14 @@ def install_illustrated_toc(full, params):
             page_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             snap = OxmlElement('w:snapToGrid'); snap.set(qn('w:val'), '0')
             p._p.get_or_add_pPr().append(snap)
-            size = 13 if kind == 'volume' else chapter_size if kind == 'chapter' else article_size
-            font = book.F_CHAPTER_TITLE if kind != 'article' else book.F_BODY
+            is_afterword=key=='__book_afterword__'
+            size = article_size if is_afterword else 13 if kind == 'volume' else chapter_size if kind == 'chapter' else article_size
+            font = book.F_BODY if is_afterword or kind=='article' else book.F_CHAPTER_TITLE
             if number:
                 book.R(p, number, cn=font, size=size, color=RGBColor.from_string('454D42'))
                 if text:
                     p.add_run('\n')
-            book.R(p, text, cn=font, size=size, bold=kind == 'chapter' and full.CHAPTER_TOC_BOLD,
+            book.R(p, text, cn=font, size=size, bold=is_afterword or (kind == 'chapter' and full.CHAPTER_TOC_BOLD),
                    color=RGBColor.from_string('454D42'))
             page = page_map.get(key)
             book.R(page_p, str(page).zfill(digits) if page else '', size=10, color=RGBColor.from_string('454D42'))

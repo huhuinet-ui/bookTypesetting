@@ -8,6 +8,7 @@ let html=ctx.renderAfterwordToc(data);
 assert(html.includes('toc-section-title'));
 assert(!html.includes('toc-reference-row'));
 assert(html.includes('data-toc-ref="afterword"'));
+assert(html.includes('class="toc-afterword '));
 style=2;html=ctx.renderAfterwordToc(data);assert(html.includes('toc-illustrated-chapter'));
 style=3;html=ctx.renderAfterwordToc(data);assert(html.includes('toc-vertical-label">C\nl\no\ns\ni\nn\ng'));
 assert(html.includes('toc-vertical-chapter-newpage'));

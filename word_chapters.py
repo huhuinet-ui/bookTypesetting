@@ -114,10 +114,18 @@ def install_chapters(full, params, artwork):
             paragraph.add_run()._r.append(parse_xml(xml))
         if second:
             inset=(book.page_inset()+params.get('chapter2Inset',13))*72/25.4
-            shape(inset,inset,W-2*inset,H-2*inset,border=params.get('bookColor','#DEB887'))
+            if params.get('chapter2FrameOn',True):
+                shape(inset,inset,W-2*inset,H-2*inset,border=params.get('bookColor','#DEB887'))
             if artwork:shape(0,0,W,H,image=artwork[0])
             size=params.get('chapter2TitleSize',18)
-            shape(W*.46,H*params.get('chapter2Top',40)/100,size*1.7,H*.52,title,size=size,color=params.get('bookColor','#DEB887'),vertical=True,fill='#FFFFFF',preserve_spaces=True,letter_spacing=3)
+            number,name=split_chapter_heading(title)
+            label=' '.join(part for part in (number,name) if part) if number else title.strip()
+            top=book.page_inset()+book.PAGE_H*params.get('chapter2Top',40)/100
+            bottom=max(8,params.get('chapter2Inset',13) if params.get('chapter2FrameOn',True) else 8)
+            height=max(1,(book.PAGE_H*(1-params.get('chapter2Top',40)/100)-bottom)*72/25.4-8)
+            if params.get('chapter2SingleColumn',True):
+                size=book.fitted_title_size('chapter2',label,size)
+            shape(W*.46,top*72/25.4,size*1.7,height,label,size=size,color=params.get('bookColor','#DEB887'),vertical=True,fill='#FFFFFF',preserve_spaces=True,letter_spacing=3)
         else:
             number,name=split_chapter_heading(title)
             if number:

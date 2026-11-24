@@ -293,9 +293,12 @@ const GROUPS = [
    {k:"introBoxW",l:"引言框宽",t:"num",d:8.34,u:"cm",s:0.1,min:1,max:20},
    {k:"chapterBgFollowTheme",l:"版式三/四/五·底色跟随主色",t:"bool",d:true},
    {k:"chapter4Bg",l:"版式三/四/五·自定义底色（关闭跟随后生效）",t:"color",d:"#DFE9C9"},
+   {k:"chapter2FrameOn",l:"版式二·显示章节边框",t:"bool",d:true},
    {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
    {k:"chapter2TitleSize",l:"版式2·标题字号",t:"num",d:18,u:"pt",s:0.5,min:5,max:96},
+   {k:"chapter2SingleColumn",l:"版式2·标题单列适配（超长自动缩小）",t:"bool",d:true},
+   {k:"chapter2MinSize",l:"版式2·标题最小字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
    {k:"chapterTextColor",l:"版式3/4/5·文字与下划线颜色",t:"color",d:"#20251c"},
    {k:"chapterTitleSingleLine",l:"版式3/4/5·章节名称单行适配",t:"bool",d:true},
    {k:"chapterTitleMinSize",l:"版式3/4/5·章节名称最小字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
@@ -974,6 +977,7 @@ function buildCSS(){
 .toc-reference .toc-meta { flex:0 0 ${100-Math.max(30,Math.min(90,Number(P.tocTitleWidthPercent)||90))}%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:1em; }
 .toc-reference .toc-num { display:inline-block; min-width:3ch; font-family:"Times New Roman",serif; font-variant-numeric:tabular-nums; font-size:.877em; }
 .toc-reference .toc-front-entry { font-size:${P.chapterTocSize}pt; margin-bottom:12pt; }
+.toc .toc-afterword, .toc .toc-afterword .toc-vertical-label { font-family:${fontStack(P.fBody)} !important; font-size:${P.tocEntrySize}pt !important; font-weight:bold !important; }
 .poem-title { font-family:${fontStack(P.fTitle)}; font-size:${P.poemTitleSize}pt; text-align:center; margin:0 0 ${P.poemTitleAfter}pt 0; }
 .poem-meta { font-size:${P.poemMetaSize}pt; text-align:center; margin:0 0 ${P.poemMetaAfter}pt 0; }
 .poem-line { font-size:${P.poemLineSize}pt; text-align:center; line-height:${P.poemLine}pt; margin:0; }
@@ -1139,6 +1143,24 @@ function fittedTitleStyle(kind,text){
   const fit=fittedTitle(kind,text);
   return fit.enabled?`font-size:${fit.size}pt;white-space:${fit.fits?'nowrap':'normal'};overflow-wrap:anywhere;`:'';
 }
+function chapter2Text(value){
+  const {number,title}=splitChapterHeading(value);
+  return number?[number,title].filter(Boolean).join(' '):String(value).trim();
+}
+function chapter2TitleStyle(text){
+  const bottom=Math.max(8,P.chapter2FrameOn!==false?Number(P.chapter2Inset):8);
+  const available=Math.max(0,P.pageH*(1-P.chapter2Top/100)-bottom)*72/25.4-8;
+  const probe=document.createElement('span');
+  probe.textContent=text;
+  probe.style.cssText=`position:absolute;left:-10000px;top:0;visibility:hidden;display:inline-block;writing-mode:vertical-rl;text-orientation:upright;white-space:nowrap;letter-spacing:3pt;line-height:1.15;font-family:${fontStack(P.fChapterTitle)};`;
+  document.body.appendChild(probe);
+  let fit;
+  try{fit=TitleFit.calculate(size=>{probe.style.fontSize=size+'pt';return probe.getBoundingClientRect().height*72/96;},Number(P.chapter2TitleSize),Number(P.chapter2MinSize),available,P.chapter2SingleColumn!==false);}
+  finally{probe.remove();}
+  titleFitEntries.set('chapter2\n'+text,{kind:'chapter2',text,...fit});
+  const top=(P.pageH*P.chapter2Top/100-P.mTop)*72/25.4;
+  return `margin-top:${top}pt;`+(fit.enabled?`font-size:${fit.size}pt;${fit.fits?'white-space:nowrap;':'white-space:normal;'}height:${Math.max(1,available)}pt;box-sizing:content-box;`:'');
+}
 async function prepareTitleFit(){
   await Promise.all([document.fonts.load(`14pt ${fontStack(P.fTitle)}`,'文章标题'),document.fonts.load(`21pt ${fontStack(P.fChapterTitle)}`,'章节名称')]);
   titleFitEntries.clear();
@@ -1147,7 +1169,7 @@ function showTitleFitWarnings(){
   const warnings=[...titleFitEntries.values()].filter(item=>item.enabled&&!item.fits);
   const el=document.getElementById('titleFitStatus');
   el.hidden=!warnings.length;
-  el.textContent=warnings.length?'以下标题缩到最小字号仍超宽，暂保留换行。请缩短标题、降低最小字号或增加可用宽度：\n'+warnings.map(item=>`${item.kind==='article'?'文章':'章节'}：${item.text}（${item.size} pt）`).join('\n'):'';
+  el.textContent=warnings.length?'以下标题缩到最小字号仍超出可用宽度或高度，暂保留换行／折列。请缩短标题、降低最小字号或调整位置及页边距：\n'+warnings.map(item=>`${item.kind==='article'?'文章':'章节'}：${item.text}（${item.size} pt）`).join('\n'):'';
 }
 function renderArticle(a, key){
   const parts = [];
@@ -1166,7 +1188,7 @@ function renderArticle(a, key){
 function renderFront(title, text, cls, key=null){
   const paras = renderItems(classify((text||"").split("\n"),false));
   key=key||(cls==='afterword'?'afterword':null);
-  return `<div class="front-page ${cls}"${key?` data-toc-key="${escAttr(key)}"`:''}><div class="front-title">${esc(title)}</div>${paras}</div>`;
+  return `<div class="front-page ${cls}"${cls==='afterword'?` data-header-title="${escAttr(title)}"`:''}${key?` data-toc-key="${escAttr(key)}"`:''}><div class="front-title">${esc(title)}</div>${paras}</div>`;
 }
 function renderTocEntry(text, key, size, bold, indentPt){
   const num = key ? (P.pad ? "0".repeat(P.pad) : "0") : "";
@@ -1207,6 +1229,10 @@ function renderAfterwordToc(data){
   }).join('');
 }
 function renderEndmatterToc(label,key,index=0,articles=[]){
+  const html=renderEndmatterTocLayout(label,key,index,articles);
+  return key==='afterword'?html.replace('class="','class="toc-afterword '):html;
+}
+function renderEndmatterTocLayout(label,key,index=0,articles=[]){
   const title=esc(label),digits=Math.max(1,Number(P.pad)||1);
   const number=`<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span>`;
   if(isIllustratedToc())return `<div class="toc-illustrated-row toc-illustrated-chapter" style="--toc-indent:0pt"><span class="toc-illustrated-text">${title}</span>${number}</div>`;
@@ -1352,7 +1378,8 @@ function renderBook(){
         const {number,title}=splitChapterHeading(ch.title);
         cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout">${number?`<div class="chap4-number">${esc(number)}</div>`:""}<div class="chap4-heading" style="${P.chapterTitleSingleLine!==false?'width:58%;max-width:58%':''}"><div class="chap4-title" style="${fittedTitleStyle('chapter',title)}">${esc(title)}</div></div><div class="chap4-rose">${isChap6()?chap6TreeSVG():isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
       } else if(isChap2()){
-        cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
+        const text=chapter2Text(ch.title);
+        cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title" style="${chapter2TitleStyle(text)}">${esc(text)}</div></div>`;
       } else {
         cp = `<div class="chapter-page${br}" data-toc-key="c${chapterIdx}_0"><div style="height:${P.chapterTopLines*P.bodyLine}pt"></div>`;
         cp += `<div class="chapter-title">${esc(ch.title)}</div><div class="chapter-rule"></div>`;
@@ -1620,6 +1647,12 @@ function decoratePage(pg, i, bodyStart, tocIndex=-1){
     const chName = art.getAttribute("data-chapter") || BOOK_NAME;
     const hdrName = isRight ? (chName || BOOK_NAME) : BOOK_NAME;
     addHeader(sheet, isRight, hdrName, num);
+  } else {
+    const afterword=pg.querySelector('.front-page.afterword');
+    if(afterword){
+      const num=(bodyStart>=0 && i>=bodyStart)?i-bodyStart+1:0;
+      addHeader(sheet,isRight,isRight?(afterword.getAttribute('data-header-title')||'后记'):BOOK_NAME,num);
+    }
   }
 }
 function addDeco(sheet, isRight){
@@ -1676,6 +1709,7 @@ function chap2OrnamentSVG(){
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none" fill="none" stroke="#A0A0A0" stroke-width="${(0.469/484.724*W).toFixed(4)}"><svg x="0" y="${H*28.346/668.976}" width="${W}" height="${H*612.284/668.976}" viewBox="0 ${H*28.346/668.976} ${W} ${H*612.284/668.976}" overflow="hidden">${paths}</svg></svg>`;
 }
 function addChap2Frame(sheet){
+  if(P.chapter2FrameOn===false)return;
   const inset = printInset() + P.chapter2Inset;
   const w = P.pageW + 2*printInset() - 2*inset, h = P.pageH + 2*printInset() - 2*inset;
   const d = document.createElement("div");

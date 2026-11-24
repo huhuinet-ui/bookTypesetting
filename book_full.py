@@ -99,7 +99,8 @@ def build_toc(doc, chapters, page_map, pad=None, preface_title=None, afterword=N
             entries.append((a["title"], page_map.get(a["title"], ""),
                             toc.ENTRY_SIZE, False, ARTICLE_INDENT_PT))
     for afterword in (endmatter_order if endmatter_order is not None else ([afterword] if afterword else []) + (appendices or [])):
-        entries.append((afterword[0], page_map.get(afterword[1], ''), CHAPTER_TOC_SIZE, CHAPTER_TOC_BOLD, 0))
+        is_afterword=afterword[1]=='__book_afterword__'
+        entries.append((afterword[0], page_map.get(afterword[1], ''), toc.ENTRY_SIZE if is_afterword else CHAPTER_TOC_SIZE, True if is_afterword else CHAPTER_TOC_BOLD, 0))
         for article in (endmatter_articles or {}).get(afterword[1], []):
             entries.append((article['title'],page_map.get(article['toc_key'],''),toc.ENTRY_SIZE,False,ARTICLE_INDENT_PT))
     last = len(entries) - 1
@@ -167,11 +168,15 @@ def build_body(doc, chapters, first_sec, pad=None, page_map=None, anchors=None):
                 book.build_article(doc, a, i == 0, recto=_recto(a["title"]), anchor=_tok(a["title"]))
 
 
-def add_front_matter(doc, title, text, anchor=None):
-    """前言/后记页：单独成节、空页眉（暗码，不显示页码）。"""
+def add_front_matter(doc, title, text, anchor=None, show_header=False, pad=None):
+    """前言等默认空页眉；后记可显示页眉并延续正文页码。"""
     sec = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
     remove_page_number_start(sec._sectPr)
-    book.clear_header(sec)
+    if show_header:
+        sec.different_first_page_header_footer = False
+        book.setup_header(sec, chapter=title, pad=pad)
+    else:
+        book.clear_header(sec)
     book.add_front_page(doc, title, text, anchor=anchor)
     return sec
 
@@ -236,7 +241,8 @@ def build_document(data, page_map, pad):
         anchors.append((token, item['key']))
         articles = item.get('articles', [])
         if not articles:
-            add_front_matter(doc, item['title'], item['text'], anchor=token)
+            add_front_matter(doc, item['title'], item['text'], anchor=token,
+                             show_header=item['key']=='__book_afterword__', pad=pad)
             continue
         section = book.add_book_section(doc, WD_SECTION.NEW_PAGE)
         remove_page_number_start(section._sectPr)
