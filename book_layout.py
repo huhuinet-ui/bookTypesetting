@@ -109,6 +109,11 @@ DECO_W, DECO_H = 34.02, 72.57
 DECO_ON = True  # 是否展示文章标题旁的矩形装饰
 BODY_EACH_LINE = False  # 旧 MD 可选择将每个物理行视为独立段落
 TITLE_FIT_PLAN = {}
+YEAR_SIZE = 13
+F_YEAR = '方正楷体_GBK'
+YEAR_RULE_W, YEAR_RULE_PT = 2.56, .25
+YEAR_RULE_BEFORE, YEAR_RULE_AFTER = 9.75, 17.3
+YEAR_BODY_GAP = 78
 
 
 def fitted_title_size(kind, text, base):
@@ -435,19 +440,20 @@ def set_border_bottom(p, color_hex, width_pt=0.5, space=0):
     pPr.append(borders)
 
 
-def add_rule(doc, recto=True):
+def add_rule(doc, recto=True, width_cm=None, color=None, thickness=None):
     """标题下的横线：零高度细线，宽 RULE_W、黑色。奇数页右对齐、偶数页左对齐（镜像）。"""
     text_w_cm = (PAGE_W - M_LEFT - M_RIGHT) / 10.0   # 版心宽 cm
+    width = RULE_W if width_cm is None else min(max(0,text_w_cm),width_cm)
     p = doc.add_paragraph()
     pf = p.paragraph_format
     pf.space_before = Pt(0)
     pf.space_after = Pt(0)
     pf.line_spacing = Pt(1)
     if recto:
-        pf.left_indent = Cm(text_w_cm - RULE_W)    # 右对齐：左缩进限宽
+        pf.left_indent = Cm(text_w_cm - width)    # 右对齐：左缩进限宽
     else:
-        pf.right_indent = Cm(text_w_cm - RULE_W)   # 左对齐：右缩进限宽
-    set_border_bottom(p, RULE_COLOR, RULE_PT)
+        pf.right_indent = Cm(text_w_cm - width)   # 左对齐：右缩进限宽
+    set_border_bottom(p, RULE_COLOR if color is None else color, RULE_PT if thickness is None else thickness)
     R(p, "", size=1)
     return p
 
@@ -1073,6 +1079,25 @@ def parse_volume_heading(label, index):
             "title": match[2] if match else label, "label": label}
 
 
+def read_article_metadata(lines, start=0):
+    next_line, author, year = start, '', ''
+    while next_line < len(lines):
+        line = lines[next_line].strip().strip('*').strip()
+        if not line:
+            next_line += 1
+            continue
+        ym = re.match(r'^年份\s*[:：]\s*(.*)$', line)
+        am = re.match(r'^作者\s*[:：]?\s*(.*)$', line)
+        if ym:
+            year = ym[1].strip()
+        elif am:
+            author = am[1].strip()
+        else:
+            break
+        next_line += 1
+    return author, year, next_line
+
+
 def parse_book(src=None):
     """读取源文件，解析出前言/后记/章节/文章。
     返回 dict：{"preface": str|None, "afterword": str|None,
@@ -1160,16 +1185,7 @@ def parse_book(src=None):
         # 文章（####）
         if re.match(r"^####(?:\s|$)", s):
             title = re.sub(r"^标题\s*[:：]\s*", "", s.lstrip("#").strip()).strip()
-            author, j = "", i + 1
-            while j < n and j <= i + 5:
-                l = raw[j].strip().strip("*").strip()
-                if not l:
-                    j += 1
-                    continue
-                if l.startswith("作者"):
-                    author = re.sub(r"^作者\s*[:：]?\s*", "", l).strip()
-                    j += 1
-                break
+            author, year, j = read_article_metadata(raw, i + 1)
             body = []
             while j < n:
                 sj = raw[j].strip()
@@ -1186,7 +1202,7 @@ def parse_book(src=None):
                     poem = True
                 else:
                     body2.append(ln)
-            art = {"title": title, "author": author, "poem": poem,
+            art = {"title": title, "author": author, "year": year, "poem": poem,
                    "items": classify(body2, base_dir=src_dir, poem=poem)}
             if chapters and chapters[-1].get("volume") is volume:
                 chapters[-1]["articles"].append(art)
@@ -1221,11 +1237,8 @@ def parse_appendix(title, lines, base_dir=None):
             (current['lines'] if current is not None else intro).append(line)
     for article in articles:
         body = article.pop('lines')
-        author = ''
-        first = next((i for i, value in enumerate(body) if value.strip()), None)
-        if first is not None and re.match(r'^作者\s*[:：]', body[first]):
-            author = re.sub(r'^作者\s*[:：]\s*', '', body.pop(first))
-        article.update(author=author, poem=False, items=classify(body, base_dir=base_dir))
+        author, year, next_line = read_article_metadata(body)
+        article.update(author=author, year=year, poem=False, items=classify(body[next_line:], base_dir=base_dir))
     normalize = lambda values: '\n'.join(re.sub(r'^#{1,4}\s+', '##### ', value) for value in values).strip()
     return {'title': title, 'text': normalize(lines), 'intro': normalize(intro), 'articles': articles}
 
@@ -1358,21 +1371,32 @@ def build_article(doc, art, first, recto=True, anchor=None):
     set_para(pt, align, 0, 0, 1.0)
     R(pt, art["title"], cn=F_TITLE, size=fitted_title_size('article', art['title'], TITLE_SIZE))
     add_anchor(pt, anchor)   # 非打印书签用于整本书的最终页码校验
+    if art.get('year'):
+        pt.paragraph_format.keep_with_next = True
+        rule=add_rule(doc,recto,width_cm=YEAR_RULE_W,color='231F20',thickness=YEAR_RULE_PT)
+        rule.paragraph_format.space_before=Pt(max(0,YEAR_RULE_BEFORE-1))
+        rule.paragraph_format.keep_with_next=True
+        yp = doc.add_paragraph()
+        set_para(yp, align, YEAR_RULE_AFTER, 0, YEAR_SIZE*1.2)
+        yp.paragraph_format.keep_together = True
+        yp.paragraph_format.keep_with_next = bool(art.get('author'))
+        R(yp, art['year'], cn=F_YEAR, size=YEAR_SIZE, color=BOOK_COLOR, af=F_YEAR)
 
     if DECO_ON:
         add_deco_rect(pt, deco_x(recto), DECO_TOP, DECO_W, DECO_H, str(BOOK_COLOR))
 
     # 有作者才画标题下划线和作者名；没有作者就只留文章标题
     if art["author"]:
-        add_rule(doc, recto)
+        if not art.get('year'):
+            add_rule(doc, recto)
         pa = doc.add_paragraph()
         set_para(pa, align, 0, 0, 1.0)
         R(pa, art["author"], cn=F_AUTHOR, size=AUTHOR_SIZE, color=BOOK_COLOR)
 
     # 标题（含横线、作者名）到正文之间空行
-    for _k in range(TITLE_BODY_GAP_LINES):
+    for _k in range(1 if art.get('year') and YEAR_BODY_GAP>0 else 0 if art.get('year') else TITLE_BODY_GAP_LINES):
         gp = doc.add_paragraph()
-        set_para(gp, LEFT, 0, 0, BODY_LINE)
+        set_para(gp, LEFT, 0, 0, YEAR_BODY_GAP if art.get('year') else BODY_LINE)
         R(gp, "", size=BODY_SIZE)
 
     if art.get("poem"):

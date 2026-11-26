@@ -19,6 +19,10 @@ def main():
     from docx.shared import RGBColor
     from docx.enum.text import WD_TAB_LEADER
     p = config["params"]
+    full.book.YEAR_SIZE = float(p.get('yearSize', 13))
+    full.book.F_YEAR = str(p.get('yearFont', '方正楷体_GBK'))
+    for key,attr,default in [('yearRuleW','YEAR_RULE_W',2.56),('yearRulePt','YEAR_RULE_PT',.25),('yearRuleBefore','YEAR_RULE_BEFORE',9.75),('yearRuleAfter','YEAR_RULE_AFTER',17.3),('yearBodyGap','YEAR_BODY_GAP',78)]:
+        setattr(full.book,attr,float(p.get(key,default)))
     full.book.TITLE_FIT_PLAN = {(item['kind'], item['text']): item['size']
                                for item in config.get('titleFitPlan', []) if item.get('enabled')}
     full.PAGE_NUMBER_PAD = max(1,min(4,int(p.get('pad',2))))

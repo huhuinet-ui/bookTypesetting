@@ -250,6 +250,13 @@ const GROUPS = [
  ]},
  { title:"文章标题", items:[
    {k:"titleSize",l:"标题字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:40},
+   {k:"yearSize",l:"标题下年份字号（颜色跟随主色）",t:"num",d:13,u:"pt",s:0.5,min:5,max:40},
+   {k:"yearFont",l:"标题下年份字体",t:"font",d:"方正楷体_GBK"},
+   {k:"yearRuleW",l:"年份标题·下划线宽",t:"num",d:2.56,u:"cm",s:0.1,min:0,max:20},
+   {k:"yearRulePt",l:"年份标题·下划线粗细",t:"num",d:0.25,u:"pt",s:0.125,min:0,max:5},
+   {k:"yearRuleBefore",l:"年份标题·标题至线间距",t:"num",d:9.75,u:"pt",s:0.25,min:0,max:100},
+   {k:"yearRuleAfter",l:"年份标题·线至年份间距",t:"num",d:17.3,u:"pt",s:0.5,min:0,max:100},
+   {k:"yearBodyGap",l:"年份标题·信息块后至正文留白",t:"num",d:78,u:"pt",s:1,min:0,max:200},
    {k:"titleSingleLine",l:"文章标题单行适配（超宽自动缩小）",t:"bool",d:true},
    {k:"titleMinSize",l:"文章标题最小字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:40},
    {k:"titleTopLines",l:"标题上方空行",t:"num",d:3,u:"行",s:1,min:0,max:20},
@@ -681,6 +688,19 @@ function classifyPoem(lines){
   }
   return items;
 }
+function readArticleMetadata(lines,start=0){
+  let next=start,author='',year='';
+  while(next<lines.length){
+    const line=lines[next].trim().replace(/^\*+|\*+$/g,'').trim();
+    if(!line){next++;continue;}
+    const ym=/^年份\s*[:：]\s*(.*)$/.exec(line),am=/^作者\s*[:：]?\s*(.*)$/.exec(line);
+    if(ym)year=ym[1].trim();
+    else if(am)author=am[1].trim();
+    else break;
+    next++;
+  }
+  return {author,year,next};
+}
 function parseAppendix(title,lines){
   const intro=[],articles=[];let current=null;
   for(const line of lines){
@@ -690,9 +710,8 @@ function parseAppendix(title,lines){
   }
   for(const article of articles){
     const body=article.lines;delete article.lines;
-    const first=body.findIndex(line=>line.trim());let author='';
-    if(first>=0 && /^作者\s*[:：]/.test(body[first]))author=body.splice(first,1)[0].replace(/^作者\s*[:：]\s*/,'');
-    Object.assign(article,{author,poem:false,items:classify(body,false)});
+    const {author,year,next}=readArticleMetadata(body);
+    Object.assign(article,{author,year,poem:false,items:classify(body.slice(next),false)});
   }
   const normalize=values=>values.map(line=>line.replace(/^#{1,4}\s+/,'##### ')).join('\n').trim();
   return {title,text:normalize(lines),intro:normalize(intro),articles};
@@ -762,18 +781,13 @@ function parseBook(srcText){
     }
     if(/^####(?:\s|$)/.test(s)){
       const title = s.replace(/^#+\s*/,"").replace(/^标题\s*[:：]\s*/,"").trim();
-      let author=""; let j=i+1;
-      while(j<n && j<=i+5){
-        let l = raw[j].trim().replace(/\*/g,"").trim();
-        if(!l){ j++; continue; }
-        if(l.startsWith("作者")){ author = l.replace(/^作者\s*[:：]?\s*/,"").trim(); j++; }
-        break;
-      }
+      const metadata=readArticleMetadata(raw,i+1);
+      const {author,year}=metadata;let j=metadata.next;
       const body=[];
       while(j<n){ const sj=raw[j].trim(); if(sj.startsWith("#") && !sj.startsWith("#####")) break; body.push(sj); j++; }
       let poem=false; const body2=[];
       for(const ln of body){ if(/^诗歌\s*[:：]?\s*$/.test(ln)) poem=true; else body2.push(ln); }
-      const art = {title, author, poem, items: classify(body2, poem)};
+      const art = {title, author, year, poem, items: classify(body2, poem)};
       if(chapters.length && chapters[chapters.length-1].volume===volume) chapters[chapters.length-1].articles.push(art);
       else chapters.push({title:null, intro:null, volume, articles:[art]});
       i=j; continue;
@@ -941,6 +955,12 @@ function buildCSS(){
 .pagedjs_right_page .article-rule, .pagedjs_first_page .article-rule { margin-left:auto; margin-right:0; }
 .pagedjs_left_page .article-rule { margin-left:0; margin-right:auto; }
 .article-author { font-family:${fontStack(P.fAuthor)}; font-size:${P.authorSize}pt; color:${hexColor(P.bookColor)}; }
+.article-year { font-family:${fontStack(P.yearFont)};font-size:${P.yearSize}pt;color:${hexColor(P.bookColor)};line-height:1.2;margin:0;padding-top:${P.yearRuleAfter}pt;break-before:avoid;break-inside:avoid; }
+.article-year-rule { height:0;border-bottom:${P.yearRulePt}pt solid #231f20;width:min(100%,${P.yearRuleW}cm);margin-top:${P.yearRuleBefore}pt;break-before:avoid;break-after:avoid; }
+.pagedjs_right_page .article-year-rule,.pagedjs_first_page .article-year-rule { margin-left:auto;margin-right:0; }
+.pagedjs_left_page .article-year-rule { margin-left:0;margin-right:auto; }
+.pagedjs_right_page .article-year,.pagedjs_first_page .article-year { text-align:right; }
+.pagedjs_left_page .article-year { text-align:left; }
 .volume-page { text-align:center; padding-top:${Math.max(0,P.pageH*.30-P.mTop)}mm; }
 .volume-number { font-family:${fontStack(P.fChapterNumber)}; font-size:${P.volumeNumberSize}pt; line-height:1.5; margin-bottom:18pt; }
 .volume-name { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.volumeTitleSize}pt; line-height:1.5; overflow-wrap:anywhere; }
@@ -1176,11 +1196,12 @@ function renderArticle(a, key){
   parts.push(`<article class="article" data-chapter="${escAttr(a._chapter||'')}" data-toc-key="${key}">`);
   parts.push(`<div style="height:${P.titleTopLines*P.bodyLine}pt"></div>`);
   parts.push(`<div class="article-title" style="${fittedTitleStyle('article',a.title)}">${esc(a.title)}</div>`);
+  if(a.year)parts.push(`<div class="article-year-rule"></div><div class="article-year">${esc(a.year)}</div>`);
   if(a.author){
-    parts.push(`<div class="article-rule"></div>`);
+    if(!a.year)parts.push(`<div class="article-rule"></div>`);
     parts.push(`<div class="article-author">${esc(a.author)}</div>`);
   }
-  parts.push(`<div style="height:${P.titleBodyGapLines*P.bodyLine}pt"></div>`);
+  parts.push(`<div style="height:${a.year?P.yearBodyGap:P.titleBodyGapLines*P.bodyLine}pt"></div>`);
   parts.push(a.poem ? renderPoems(a.items) : renderItems(a.items));
   parts.push(`</article>`);
   return parts.join("\n");
