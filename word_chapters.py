@@ -29,16 +29,14 @@ def split_chapter_heading(title):
     """Preserve the manuscript's sequence label; never invent a chapter number."""
     text=str(title).strip()
     numbers=r"[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+"
-    separators=r"[\s　|｜¦:：/／_·•、.．—–-]"
     patterns=[
-        rf"^((?:十一|十二|十|[一二三四五六七八九])月)(?:{separators}+(.*)|$)",
-        rf"^((?:第)?{numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节){numbers}|[上中下][章篇部卷集辑]){separators}*(.*)$",
-        rf"^({numbers}[、.．）)]){separators}*(.*)$",
-        rf"^({numbers}){separators}+(.*)$",
+        rf"^((?:第)?{numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|幕|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|幕|节){numbers}|[上中下][章篇部卷集辑幕])(?:[\s　:：、.．—-]*)(.*)$",
+        rf"^({numbers}[、.．）)])\s*(.*)$",
+        rf"^({numbers})[\s　:：—-]+(.*)$",
     ]
     for pattern in patterns:
         match=re.match(pattern,text)
-        if match:return match[1],(match[2] or '').strip()
+        if match:return match[1],match[2].strip()
     return "",text
 
 
@@ -114,24 +112,15 @@ def install_chapters(full, params, artwork):
             paragraph.add_run()._r.append(parse_xml(xml))
         if second:
             inset=(book.page_inset()+params.get('chapter2Inset',13))*72/25.4
-            if params.get('chapter2FrameOn',True):
-                shape(inset,inset,W-2*inset,H-2*inset,border=params.get('bookColor','#DEB887'))
+            shape(inset,inset,W-2*inset,H-2*inset,border=params.get('bookColor','#DEB887'))
             if artwork:shape(0,0,W,H,image=artwork[0])
             size=params.get('chapter2TitleSize',18)
-            number,name=split_chapter_heading(title)
-            label=' '.join(part for part in (number,name) if part) if number else title.strip()
-            top=book.page_inset()+book.PAGE_H*params.get('chapter2Top',40)/100
-            bottom=max(8,params.get('chapter2Inset',13) if params.get('chapter2FrameOn',True) else 8)
-            height=max(1,(book.PAGE_H*(1-params.get('chapter2Top',40)/100)-bottom)*72/25.4-8)
-            if params.get('chapter2SingleColumn',True):
-                size=book.fitted_title_size('chapter2',label,size)
-            shape(W*.46,top*72/25.4,size*1.7,height,label,size=size,color=params.get('bookColor','#DEB887'),vertical=True,fill='#FFFFFF',preserve_spaces=True,letter_spacing=3)
+            shape(W*.46,H*params.get('chapter2Top',40)/100,size*1.7,H*.52,title,size=size,color=params.get('bookColor','#DEB887'),vertical=True,fill='#FFFFFF',preserve_spaces=True,letter_spacing=3)
         else:
             number,name=split_chapter_heading(title)
             if number:
                 shape(W*.36,H*.20,W*.46,H*.08,number,font=book.F_CHAPTER_NUMBER,size=params.get(prefix+'NumberSize',21),color=chapter_color)
             title_size=params.get(prefix+'TitleSize',21)
-            title_size=book.fitted_title_size('chapter',name,title_size)
             shape(W*.24,H*.29,W*.58,title_size*1.6+12,name,font=book.F_CHAPTER_TITLE,size=title_size,color=chapter_color,underline=True)
             if artwork:
                 box=tree_art_box(W,H,params,title_size,bool(intro)) if tree else (W*.70,H*.43,W*.13,H*.09)

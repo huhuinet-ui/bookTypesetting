@@ -174,7 +174,6 @@ body { display:flex; flex-direction:column; height:100dvh; overflow:hidden; }
     <p class="panel-note">先设置纸张和字体，再按书页顺序调整内容，最后检查页码与印刷。修改后自动更新预览。</p>
     <p class="panel-note" id="projectStatus" role="status" aria-live="polite">排版完成或修改设置后，点击「保存排版工程」。JSON 保存设置，MD 和图片请保留在原书稿文件夹中。</p>
     <input id="settingSearch" type="search" placeholder="搜索参数，如：字号、边距、目录" aria-label="搜索排版参数">
-    <p id="titleFitStatus" class="panel-note" role="status" aria-live="polite" hidden style="white-space:pre-line;color:#95531b"></p>
     <nav id="settingsNav" aria-label="设置分类"></nav>
     <div class="panel-actions"><button id="expandSettings" type="button">全部展开</button><button id="collapseSettings" type="button">全部收起</button></div>
     <div id="formHost"></div><p id="noSettings" hidden>没有找到匹配的参数，请换个关键词。</p>
@@ -250,15 +249,6 @@ const GROUPS = [
  ]},
  { title:"文章标题", items:[
    {k:"titleSize",l:"标题字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:40},
-   {k:"yearSize",l:"标题下年份字号（颜色跟随主色）",t:"num",d:13,u:"pt",s:0.5,min:5,max:40},
-   {k:"yearFont",l:"标题下年份字体",t:"font",d:"方正楷体_GBK"},
-   {k:"yearRuleW",l:"年份标题·下划线宽",t:"num",d:2.56,u:"cm",s:0.1,min:0,max:20},
-   {k:"yearRulePt",l:"年份标题·下划线粗细",t:"num",d:0.25,u:"pt",s:0.125,min:0,max:5},
-   {k:"yearRuleBefore",l:"年份标题·标题至线间距",t:"num",d:9.75,u:"pt",s:0.25,min:0,max:100},
-   {k:"yearRuleAfter",l:"年份标题·线至年份间距",t:"num",d:17.3,u:"pt",s:0.5,min:0,max:100},
-   {k:"yearBodyGap",l:"年份标题·信息块后至正文留白",t:"num",d:78,u:"pt",s:1,min:0,max:200},
-   {k:"titleSingleLine",l:"文章标题单行适配（超宽自动缩小）",t:"bool",d:true},
-   {k:"titleMinSize",l:"文章标题最小字号",t:"num",d:10,u:"pt",s:0.5,min:5,max:40},
    {k:"titleTopLines",l:"标题上方空行",t:"num",d:3,u:"行",s:1,min:0,max:20},
    {k:"titleBodyGapLines",l:"标题下方空行",t:"num",d:3,u:"行",s:1,min:0,max:20},
    {k:"ruleW",l:"下划线宽",t:"num",d:2.54,u:"cm",s:0.1,min:0,max:20},
@@ -300,15 +290,10 @@ const GROUPS = [
    {k:"introBoxW",l:"引言框宽",t:"num",d:8.34,u:"cm",s:0.1,min:1,max:20},
    {k:"chapterBgFollowTheme",l:"版式三/四/五·底色跟随主色",t:"bool",d:true},
    {k:"chapter4Bg",l:"版式三/四/五·自定义底色（关闭跟随后生效）",t:"color",d:"#DFE9C9"},
-   {k:"chapter2FrameOn",l:"版式二·显示章节边框",t:"bool",d:true},
    {k:"chapter2Inset",l:"版式二·边框内缩",t:"num",d:13,u:"mm",s:0.5,min:0,max:40},
    {k:"chapter2Top",l:"版式二·标题距顶",t:"num",d:40,u:"%",s:1,min:5,max:90},
    {k:"chapter2TitleSize",l:"版式2·标题字号",t:"num",d:18,u:"pt",s:0.5,min:5,max:96},
-   {k:"chapter2SingleColumn",l:"版式2·标题单列适配（超长自动缩小）",t:"bool",d:true},
-   {k:"chapter2MinSize",l:"版式2·标题最小字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
    {k:"chapterTextColor",l:"版式3/4/5·文字与下划线颜色",t:"color",d:"#20251c"},
-   {k:"chapterTitleSingleLine",l:"版式3/4/5·章节名称单行适配",t:"bool",d:true},
-   {k:"chapterTitleMinSize",l:"版式3/4/5·章节名称最小字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4NumberSize",l:"版式3·章节序号字号",t:"num",d:21,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4TitleSize",l:"版式3·标题字号",t:"num",d:21.6,u:"pt",s:0.5,min:5,max:96},
    {k:"chapter4IntroSize",l:"版式3·引言字号",t:"num",d:12,u:"pt",s:0.5,min:5,max:96},
@@ -320,7 +305,7 @@ const GROUPS = [
    {k:"chapterIntroAutoFit",l:"版式3/4/5·引言过长时自动缩小字号",t:"bool",d:false},
  ]},
  { title:"前言 / 后记", items:[
-   {k:"frontSize",l:"大标题字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:40},
+   {k:"frontSize",l:"大标题字号",t:"num",d:15,u:"pt",s:0.5,min:6,max:40},
    {k:"frontTopLines",l:"标题上方空行",t:"num",d:1,u:"行",s:1,min:0,max:20},
  ]},
  { title:"插图", items:[
@@ -364,8 +349,8 @@ const GROUPS = [
    {k:"toc3ExtraWidth",l:"版式3·目录栏加宽",t:"num",d:5,u:"mm",s:0.5,min:0,max:20},
    {k:"tocTitle",l:"目录大标题",t:"text",d:"目录"},
    {k:"tocTitleSize",l:"大标题字号",t:"num",d:12,u:"pt",s:0.5,min:6,max:40},
-   {k:"tocEntrySize",l:"条目字号",t:"num",d:10,u:"pt",s:0.5,min:6,max:30},
-   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:14,u:"pt",s:0.5,min:6,max:30},
+   {k:"tocEntrySize",l:"条目字号",t:"num",d:8,u:"pt",s:0.5,min:6,max:30},
+   {k:"chapterTocSize",l:"章节条目字号",t:"num",d:9.5,u:"pt",s:0.5,min:6,max:30},
    {k:"chapterTocBold",l:"章节条目加粗",t:"bool",d:true},
    {k:"articleIndentPt",l:"文章条目缩进",t:"num",d:24,u:"pt",s:1,min:0,max:100},
    {k:"entrySpacing",l:"条目行距倍数",t:"num",d:1.2,u:"",s:0.1,min:1,max:3},
@@ -688,19 +673,6 @@ function classifyPoem(lines){
   }
   return items;
 }
-function readArticleMetadata(lines,start=0){
-  let next=start,author='',year='';
-  while(next<lines.length){
-    const line=lines[next].trim().replace(/^\*+|\*+$/g,'').trim();
-    if(!line){next++;continue;}
-    const ym=/^年份\s*[:：]\s*(.*)$/.exec(line),am=/^作者\s*[:：]?\s*(.*)$/.exec(line);
-    if(ym)year=ym[1].trim();
-    else if(am)author=am[1].trim();
-    else break;
-    next++;
-  }
-  return {author,year,next};
-}
 function parseAppendix(title,lines){
   const intro=[],articles=[];let current=null;
   for(const line of lines){
@@ -710,8 +682,9 @@ function parseAppendix(title,lines){
   }
   for(const article of articles){
     const body=article.lines;delete article.lines;
-    const {author,year,next}=readArticleMetadata(body);
-    Object.assign(article,{author,year,poem:false,items:classify(body.slice(next),false)});
+    const first=body.findIndex(line=>line.trim());let author='';
+    if(first>=0 && /^作者\s*[:：]/.test(body[first]))author=body.splice(first,1)[0].replace(/^作者\s*[:：]\s*/,'');
+    Object.assign(article,{author,poem:false,items:classify(body,false)});
   }
   const normalize=values=>values.map(line=>line.replace(/^#{1,4}\s+/,'##### ')).join('\n').trim();
   return {title,text:normalize(lines),intro:normalize(intro),articles};
@@ -781,13 +754,18 @@ function parseBook(srcText){
     }
     if(/^####(?:\s|$)/.test(s)){
       const title = s.replace(/^#+\s*/,"").replace(/^标题\s*[:：]\s*/,"").trim();
-      const metadata=readArticleMetadata(raw,i+1);
-      const {author,year}=metadata;let j=metadata.next;
+      let author=""; let j=i+1;
+      while(j<n && j<=i+5){
+        let l = raw[j].trim().replace(/\*/g,"").trim();
+        if(!l){ j++; continue; }
+        if(l.startsWith("作者")){ author = l.replace(/^作者\s*[:：]?\s*/,"").trim(); j++; }
+        break;
+      }
       const body=[];
       while(j<n){ const sj=raw[j].trim(); if(sj.startsWith("#") && !sj.startsWith("#####")) break; body.push(sj); j++; }
       let poem=false; const body2=[];
       for(const ln of body){ if(/^诗歌\s*[:：]?\s*$/.test(ln)) poem=true; else body2.push(ln); }
-      const art = {title, author, year, poem, items: classify(body2, poem)};
+      const art = {title, author, poem, items: classify(body2, poem)};
       if(chapters.length && chapters[chapters.length-1].volume===volume) chapters[chapters.length-1].articles.push(art);
       else chapters.push({title:null, intro:null, volume, articles:[art]});
       i=j; continue;
@@ -955,12 +933,6 @@ function buildCSS(){
 .pagedjs_right_page .article-rule, .pagedjs_first_page .article-rule { margin-left:auto; margin-right:0; }
 .pagedjs_left_page .article-rule { margin-left:0; margin-right:auto; }
 .article-author { font-family:${fontStack(P.fAuthor)}; font-size:${P.authorSize}pt; color:${hexColor(P.bookColor)}; }
-.article-year { font-family:${fontStack(P.yearFont)};font-size:${P.yearSize}pt;color:${hexColor(P.bookColor)};line-height:1.2;margin:0;padding-top:${P.yearRuleAfter}pt;break-before:avoid;break-inside:avoid; }
-.article-year-rule { height:0;border-bottom:${P.yearRulePt}pt solid #231f20;width:min(100%,${P.yearRuleW}cm);margin-top:${P.yearRuleBefore}pt;break-before:avoid;break-after:avoid; }
-.pagedjs_right_page .article-year-rule,.pagedjs_first_page .article-year-rule { margin-left:auto;margin-right:0; }
-.pagedjs_left_page .article-year-rule { margin-left:0;margin-right:auto; }
-.pagedjs_right_page .article-year,.pagedjs_first_page .article-year { text-align:right; }
-.pagedjs_left_page .article-year { text-align:left; }
 .volume-page { text-align:center; padding-top:${Math.max(0,P.pageH*.30-P.mTop)}mm; }
 .volume-number { font-family:${fontStack(P.fChapterNumber)}; font-size:${P.volumeNumberSize}pt; line-height:1.5; margin-bottom:18pt; }
 .volume-name { font-family:${fontStack(P.fChapterTitle)}; font-size:${P.volumeTitleSize}pt; line-height:1.5; overflow-wrap:anywhere; }
@@ -997,7 +969,6 @@ function buildCSS(){
 .toc-reference .toc-meta { flex:0 0 ${100-Math.max(30,Math.min(90,Number(P.tocTitleWidthPercent)||90))}%; text-align:right; overflow-wrap:anywhere; font-family:${fontStack(P.fAuthor)}; font-size:1em; }
 .toc-reference .toc-num { display:inline-block; min-width:3ch; font-family:"Times New Roman",serif; font-variant-numeric:tabular-nums; font-size:.877em; }
 .toc-reference .toc-front-entry { font-size:${P.chapterTocSize}pt; margin-bottom:12pt; }
-.toc .toc-afterword, .toc .toc-afterword .toc-vertical-label { font-family:${fontStack(P.fBody)} !important; font-size:${P.tocEntrySize}pt !important; font-weight:bold !important; }
 .poem-title { font-family:${fontStack(P.fTitle)}; font-size:${P.poemTitleSize}pt; text-align:center; margin:0 0 ${P.poemTitleAfter}pt 0; }
 .poem-meta { font-size:${P.poemMetaSize}pt; text-align:center; margin:0 0 ${P.poemMetaAfter}pt 0; }
 .poem-line { font-size:${P.poemLineSize}pt; text-align:center; line-height:${P.poemLine}pt; margin:0; }
@@ -1146,62 +1117,16 @@ function renderPoems(items){
   }
   return out.join("\n");
 }
-const titleFitEntries=new Map();
-function fittedTitle(kind,text){
-  const article=kind==="article",base=Number(article?P.titleSize:P[(isChap5()||isChap6())?"chapter5TitleSize":"chapter4TitleSize"]);
-  const enabled=article?P.titleSingleLine!==false:P.chapterTitleSingleLine!==false;
-  const minimum=Number(article?P.titleMinSize:P.chapterTitleMinSize);
-  const width=(article?P.pageW-P.mLeft-P.mRight:(P.pageW+2*printInset())*.58)*72/25.4;
-  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
-  ctx.font=`100px ${fontStack(article?P.fTitle:P.fChapterTitle)}`;
-  const unit=ctx.measureText(String(text)).width/100;
-  const result=TitleFit.calculate(size=>unit*size,base,minimum,width,enabled);
-  titleFitEntries.set(kind+'\n'+text,{kind,text,...result});
-  return result;
-}
-function fittedTitleStyle(kind,text){
-  const fit=fittedTitle(kind,text);
-  return fit.enabled?`font-size:${fit.size}pt;white-space:${fit.fits?'nowrap':'normal'};overflow-wrap:anywhere;`:'';
-}
-function chapter2Text(value){
-  const {number,title}=splitChapterHeading(value);
-  return number?[number,title].filter(Boolean).join(' '):String(value).trim();
-}
-function chapter2TitleStyle(text){
-  const bottom=Math.max(8,P.chapter2FrameOn!==false?Number(P.chapter2Inset):8);
-  const available=Math.max(0,P.pageH*(1-P.chapter2Top/100)-bottom)*72/25.4-8;
-  const probe=document.createElement('span');
-  probe.textContent=text;
-  probe.style.cssText=`position:absolute;left:-10000px;top:0;visibility:hidden;display:inline-block;writing-mode:vertical-rl;text-orientation:upright;white-space:nowrap;letter-spacing:3pt;line-height:1.15;font-family:${fontStack(P.fChapterTitle)};`;
-  document.body.appendChild(probe);
-  let fit;
-  try{fit=TitleFit.calculate(size=>{probe.style.fontSize=size+'pt';return probe.getBoundingClientRect().height*72/96;},Number(P.chapter2TitleSize),Number(P.chapter2MinSize),available,P.chapter2SingleColumn!==false);}
-  finally{probe.remove();}
-  titleFitEntries.set('chapter2\n'+text,{kind:'chapter2',text,...fit});
-  const top=(P.pageH*P.chapter2Top/100-P.mTop)*72/25.4;
-  return `margin-top:${top}pt;`+(fit.enabled?`font-size:${fit.size}pt;${fit.fits?'white-space:nowrap;':'white-space:normal;'}height:${Math.max(1,available)}pt;box-sizing:content-box;`:'');
-}
-async function prepareTitleFit(){
-  await Promise.all([document.fonts.load(`14pt ${fontStack(P.fTitle)}`,'文章标题'),document.fonts.load(`21pt ${fontStack(P.fChapterTitle)}`,'章节名称')]);
-  titleFitEntries.clear();
-}
-function showTitleFitWarnings(){
-  const warnings=[...titleFitEntries.values()].filter(item=>item.enabled&&!item.fits);
-  const el=document.getElementById('titleFitStatus');
-  el.hidden=!warnings.length;
-  el.textContent=warnings.length?'以下标题缩到最小字号仍超出可用宽度或高度，暂保留换行／折列。请缩短标题、降低最小字号或调整位置及页边距：\n'+warnings.map(item=>`${item.kind==='article'?'文章':'章节'}：${item.text}（${item.size} pt）`).join('\n'):'';
-}
 function renderArticle(a, key){
   const parts = [];
   parts.push(`<article class="article" data-chapter="${escAttr(a._chapter||'')}" data-toc-key="${key}">`);
   parts.push(`<div style="height:${P.titleTopLines*P.bodyLine}pt"></div>`);
-  parts.push(`<div class="article-title" style="${fittedTitleStyle('article',a.title)}">${esc(a.title)}</div>`);
-  if(a.year)parts.push(`<div class="article-year-rule"></div><div class="article-year">${esc(a.year)}</div>`);
+  parts.push(`<div class="article-title">${esc(a.title)}</div>`);
   if(a.author){
-    if(!a.year)parts.push(`<div class="article-rule"></div>`);
+    parts.push(`<div class="article-rule"></div>`);
     parts.push(`<div class="article-author">${esc(a.author)}</div>`);
   }
-  parts.push(`<div style="height:${a.year?P.yearBodyGap:P.titleBodyGapLines*P.bodyLine}pt"></div>`);
+  parts.push(`<div style="height:${P.titleBodyGapLines*P.bodyLine}pt"></div>`);
   parts.push(a.poem ? renderPoems(a.items) : renderItems(a.items));
   parts.push(`</article>`);
   return parts.join("\n");
@@ -1209,7 +1134,7 @@ function renderArticle(a, key){
 function renderFront(title, text, cls, key=null){
   const paras = renderItems(classify((text||"").split("\n"),false));
   key=key||(cls==='afterword'?'afterword':null);
-  return `<div class="front-page ${cls}"${cls==='afterword'?` data-header-title="${escAttr(title)}"`:''}${key?` data-toc-key="${escAttr(key)}"`:''}><div class="front-title">${esc(title)}</div>${paras}</div>`;
+  return `<div class="front-page ${cls}"${key?` data-toc-key="${escAttr(key)}"`:''}><div class="front-title">${esc(title)}</div>${paras}</div>`;
 }
 function renderTocEntry(text, key, size, bold, indentPt){
   const num = key ? (P.pad ? "0".repeat(P.pad) : "0") : "";
@@ -1250,10 +1175,6 @@ function renderAfterwordToc(data){
   }).join('');
 }
 function renderEndmatterToc(label,key,index=0,articles=[]){
-  const html=renderEndmatterTocLayout(label,key,index,articles);
-  return key==='afterword'?html.replace('class="','class="toc-afterword '):html;
-}
-function renderEndmatterTocLayout(label,key,index=0,articles=[]){
   const title=esc(label),digits=Math.max(1,Number(P.pad)||1);
   const number=`<span class="toc-num" data-toc-ref="${key}" data-toc-pad="${digits}">${'0'.repeat(digits)}</span>`;
   if(isIllustratedToc())return `<div class="toc-illustrated-row toc-illustrated-chapter" style="--toc-indent:0pt"><span class="toc-illustrated-text">${title}</span>${number}</div>`;
@@ -1337,14 +1258,12 @@ function renderIllustratedToc(data){
 function splitChapterHeading(value){
   const text=String(value||"").trim();
   const numbers="[一二三四五六七八九十百千零〇两壹贰叁肆伍陆柒捌玖拾佰仟０-９0-9]+";
-  const separators="[\\s　|｜¦:：/／_·•、.．—–-]";
   const patterns=[
-    new RegExp(`^((?:十一|十二|十|[一二三四五六七八九])月)(?:${separators}+(.*)|$)`),
-    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|节)${numbers}|[上中下][章篇部卷集辑])${separators}*(.*)$`),
-    new RegExp(`^(${numbers}[、.．）)])${separators}*(.*)$`),
-    new RegExp(`^(${numbers})${separators}+(.*)$`),
+    new RegExp(`^((?:第)?${numbers}(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|幕|节)|(?:部分|篇章|章节|单元|章|篇|部|卷|集|辑|幕|节)${numbers}|[上中下][章篇部卷集辑幕])(?:[\\s　:：、.．—-]*)(.*)$`),
+    new RegExp(`^(${numbers}[、.．）)])\\s*(.*)$`),
+    new RegExp(`^(${numbers})[\\s　:：—-]+(.*)$`),
   ];
-  for(const pattern of patterns){const match=text.match(pattern);if(match)return {number:match[1],title:(match[2]||"").trim()};}
+  for(const pattern of patterns){const match=text.match(pattern);if(match)return {number:match[1],title:match[2].trim()};}
   return {number:"",title:text};
 }
 function renderBook(){
@@ -1397,10 +1316,9 @@ function renderBook(){
       let cp;
       if(isChap4() || isChap5() || isChap6()){
         const {number,title}=splitChapterHeading(ch.title);
-        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout">${number?`<div class="chap4-number">${esc(number)}</div>`:""}<div class="chap4-heading" style="${P.chapterTitleSingleLine!==false?'width:58%;max-width:58%':''}"><div class="chap4-title" style="${fittedTitleStyle('chapter',title)}">${esc(title)}</div></div><div class="chap4-rose">${isChap6()?chap6TreeSVG():isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
+        cp=`<div class="chapter-page chap4${br}" data-toc-key="c${chapterIdx}_0"><div class="chap4-layout">${number?`<div class="chap4-number">${esc(number)}</div>`:""}<div class="chap4-heading"><div class="chap4-title">${esc(title)}</div></div><div class="chap4-rose">${isChap6()?chap6TreeSVG():isChap5()?chap5PlaneSVG():chap4RoseSVG()}</div>${ch.intro?`<div class="chap4-intro">${captionNoOrphans(ch.intro)}</div>`:""}</div></div>`;
       } else if(isChap2()){
-        const text=chapter2Text(ch.title);
-        cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title" style="${chapter2TitleStyle(text)}">${esc(text)}</div></div>`;
+        cp = `<div class="chapter-page chap2${br}" data-toc-key="c${chapterIdx}_0"><div class="chap2-title">${esc(ch.title)}</div></div>`;
       } else {
         cp = `<div class="chapter-page${br}" data-toc-key="c${chapterIdx}_0"><div style="height:${P.chapterTopLines*P.bodyLine}pt"></div>`;
         cp += `<div class="chapter-title">${esc(ch.title)}</div><div class="chapter-rule"></div>`;
@@ -1470,7 +1388,6 @@ async function renderBookPreview(){
   document.getElementById("statusBar").style.display = "flex";
   document.getElementById("stInfo").textContent = "排版中…";
   await ensureImages();
-  await prepareTitleFit();
   let st = document.getElementById("bookStyle");
   if(!st){ st = document.createElement("style"); st.id = "bookStyle"; document.head.appendChild(st); }
   st.textContent = buildCSS();
@@ -1488,7 +1405,6 @@ async function renderBookPreview(){
     applyZoom();
   }
   postProcess();
-  showTitleFitWarnings();
 }
 
 let liftedImageNodes=[];
@@ -1668,12 +1584,6 @@ function decoratePage(pg, i, bodyStart, tocIndex=-1){
     const chName = art.getAttribute("data-chapter") || BOOK_NAME;
     const hdrName = isRight ? (chName || BOOK_NAME) : BOOK_NAME;
     addHeader(sheet, isRight, hdrName, num);
-  } else {
-    const afterword=pg.querySelector('.front-page.afterword');
-    if(afterword){
-      const num=(bodyStart>=0 && i>=bodyStart)?i-bodyStart+1:0;
-      addHeader(sheet,isRight,isRight?(afterword.getAttribute('data-header-title')||'后记'):BOOK_NAME,num);
-    }
   }
 }
 function addDeco(sheet, isRight){
@@ -1730,7 +1640,6 @@ function chap2OrnamentSVG(){
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none" fill="none" stroke="#A0A0A0" stroke-width="${(0.469/484.724*W).toFixed(4)}"><svg x="0" y="${H*28.346/668.976}" width="${W}" height="${H*612.284/668.976}" viewBox="0 ${H*28.346/668.976} ${W} ${H*612.284/668.976}" overflow="hidden">${paths}</svg></svg>`;
 }
 function addChap2Frame(sheet){
-  if(P.chapter2FrameOn===false)return;
   const inset = printInset() + P.chapter2Inset;
   const w = P.pageW + 2*printInset() - 2*inset, h = P.pageH + 2*printInset() - 2*inset;
   const d = document.createElement("div");
@@ -1911,7 +1820,6 @@ document.getElementById("emptyImport").addEventListener("click",()=>document.get
 applyZoom();
 </script>
 <script src="word-import.js" data-pagedjs-ignore></script>
-<script src="title-fit.js" data-pagedjs-ignore></script>
 <script src="word-export.js" data-pagedjs-ignore></script>
 <script src="project-format.js" data-pagedjs-ignore></script>
 <script src="project-settings.js" data-pagedjs-ignore></script>
